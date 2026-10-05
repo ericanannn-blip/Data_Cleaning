@@ -1,0 +1,13 @@
+.git
+.venv
+.env*
+data
+database
+attachments
+test-results
+tests
+**/__pycache__
+**/*.dat
+**/*.db*
+**/*.sqlite*
+**/*.part

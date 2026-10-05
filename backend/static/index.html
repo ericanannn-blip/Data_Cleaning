@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Inspect the underlying formats of DAT files and review persistent file metadata."
+    />
+    <title>DAT Lab · File inspector</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="DAT Lab home"
+        ><span class="brand-mark">D<span>·</span></span
+        >DAT<span class="brand-light">Lab</span></a
+      >
+      <span class="workspace-label">FILE INSPECTION WORKSPACE</span>
+      <span id="connection" class="connection"
+        ><span class="connection-dot"></span
+        ><span id="connection-label">Connecting</span></span
+      >
+    </header>
+    <main>
+      <div class="heading-row">
+        <div>
+          <div class="eyebrow">
+            <span class="tiny-line"></span> INSPECT / CLASSIFY / REVIEW
+          </div>
+          <h1>DAT file inspector<span class="heading-dot">.</span></h1>
+          <p class="intro">
+            A <code>.dat</code> extension doesn't tell the whole story. Inspect
+            the underlying<br class="desktop-break" />
+            format, review file properties, and keep a record of every upload.
+          </p>
+        </div>
+        <span class="demo-pill">FILE-LEVEL DEMO <span>v1.0</span></span>
+      </div>
+      <div
+        id="page-message"
+        class="notice hidden"
+        role="status"
+        aria-live="polite"
+      ></div>
+      <section class="workspace-grid" aria-label="Upload workspace">
+        <div class="card upload-card">
+          <div class="card-heading">
+            <h2><span class="step-number">01</span>Upload files</h2>
+            <span class="small-tag">.DAT ONLY</span>
+          </div>
+          <div id="drop-zone" class="drop-zone">
+            <div class="upload-symbol" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <path
+                  d="M16 22V8m-5 5 5-5 5 5M7 22v3h18v-3"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </div>
+            <h3>Drop your files here</h3>
+            <p>or select multiple files from your device</p>
+            <label class="button button-secondary file-picker" for="file-input"
+              >Browse files <span aria-hidden="true">→</span>
+              <input
+                id="file-input"
+                class="visually-hidden"
+                type="file"
+                accept=".dat"
+                multiple
+                aria-label="Choose DAT files"
+              />
+            </label>
+            <span id="upload-limits" class="upload-limits"
+              >Loading upload limits…</span
+            >
+          </div>
+          <div id="selection" class="selection hidden">
+            <div class="selection-heading">
+              <span id="selection-count"></span
+              ><button id="clear-selection" class="text-button" type="button">
+                Clear selection
+              </button>
+            </div>
+            <ul id="selected-files" class="selected-files"></ul>
+          </div>
+          <div
+            id="upload-progress"
+            class="upload-progress hidden"
+            role="status"
+            aria-live="polite"
+          >
+            <span id="progress-label">Uploading…</span
+            ><progress
+              id="progress-bar"
+              max="100"
+              value="0"
+              aria-label="Upload progress"
+            ></progress>
+          </div>
+          <div class="upload-footer">
+            <span id="upload-hint">Select files to start inspecting.</span
+            ><button
+              id="upload-button"
+              class="button button-primary"
+              type="button"
+              disabled
+            >
+              Upload &amp; inspect <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </div>
+        <aside class="card guide-card">
+          <div class="card-heading">
+            <h2>What happens next</h2>
+            <span class="small-tag">3 STEPS</span>
+          </div>
+          <ol class="pipeline">
+            <li>
+              <span class="pipeline-number">1</span>
+              <div>
+                <h3>Store safely</h3>
+                <p>
+                  Each accepted file gets its own private copy, even when names
+                  repeat.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span class="pipeline-number">2</span>
+              <div>
+                <h3>Look beneath the extension</h3>
+                <p>
+                  File signatures and a bounded content sample help identify the
+                  format.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span class="pipeline-number">3</span>
+              <div>
+                <h3>Review the results</h3>
+                <p>
+                  Inspect metadata and revisit saved records when you refresh.
+                </p>
+              </div>
+            </li>
+          </ol>
+          <div class="privacy-note">
+            <span aria-hidden="true">ⓘ</span>
+            <p>
+              <strong>A shared demo. Use synthetic files.</strong><br />Metadata
+              is visible to everyone. Raw files aren't available for download.
+              Detection is an estimate, not a file safety scan.
+            </p>
+          </div>
+        </aside>
+      </section>
+      <section id="batch-errors" class="batch-errors hidden" aria-live="polite">
+        <div class="error-heading">
+          <h2>Files that need attention</h2>
+          <button id="dismiss-errors" class="text-button" type="button">
+            Dismiss
+          </button>
+        </div>
+        <ul id="error-list"></ul>
+      </section>
+      <section class="results-section" aria-labelledby="results-title">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">YOUR INSPECTION LOG</div>
+            <h2 id="results-title">
+              File records <span id="record-count" class="count-badge">0</span>
+            </h2>
+          </div>
+          <button
+            id="refresh-button"
+            class="button button-secondary"
+            type="button"
+          >
+            <span aria-hidden="true">↻</span> Refresh records
+          </button>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <span>Saved records</span><strong id="metric-total">—</strong
+            ><small>Across all uploads</small>
+          </div>
+          <div class="metric">
+            <span>Signature matches</span
+            ><strong id="metric-signatures">—</strong
+            ><small>Identified by file header</small>
+          </div>
+          <div class="metric">
+            <span>Needs review</span><strong id="metric-review">—</strong
+            ><small>Heuristic or unknown format</small>
+          </div>
+        </div>
+        <div class="card results-card">
+          <div class="results-toolbar">
+            <div class="search-wrap">
+              <span aria-hidden="true">⌕</span
+              ><input
+                id="search"
+                type="search"
+                placeholder="Search loaded filenames…"
+                aria-label="Search loaded filenames"
+              />
+            </div>
+            <label class="filter-label"
+              >Format
+              <select
+                id="type-filter"
+                aria-label="Filter loaded records by format"
+              >
+                <option value="all">All formats</option>
+              </select></label
+            >
+          </div>
+          <div id="list-error" class="list-error hidden" role="alert"></div>
+          <div id="empty-state" class="empty-state">
+            <div class="empty-icon" aria-hidden="true">≡</div>
+            <h3 id="empty-title">Loading saved records…</h3>
+            <p id="empty-copy">Connecting to the inspection log.</p>
+          </div>
+          <div id="table-wrapper" class="table-wrapper hidden">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">File name</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Detected type</th>
+                  <th scope="col">Encoding</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Uploaded</th>
+                  <th scope="col">
+                    <span class="visually-hidden">Details</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="results-body"></tbody>
+            </table>
+          </div>
+          <div class="results-footer">
+            <span id="showing-count">Loading…</span
+            ><button id="load-more" class="text-button hidden" type="button">
+              Load more records ↓</button
+            ><span class="metadata-only">METADATA ONLY</span>
+          </div>
+        </div>
+        <p class="classification-note">
+          <span aria-hidden="true">ⓘ</span> Signature matches identify a likely
+          format. Text detection is heuristic; unknown and empty files remain
+          available for review. Archives are identified without extraction.
+        </p>
+      </section>
+      <footer class="footer">
+        <span
+          >DAT Lab <span class="footer-separator">/</span> File ingestion &amp;
+          classification</span
+        ><a href="/docs" target="_blank" rel="noopener">API reference →</a>
+      </footer>
+    </main>
+    <dialog id="detail-dialog" aria-labelledby="detail-title">
+      <div class="dialog-header">
+        <div>
+          <div class="eyebrow">FILE METADATA</div>
+          <h2 id="detail-title">File details</h2>
+        </div>
+        <button
+          id="close-dialog"
+          class="close-button"
+          type="button"
+          aria-label="Close file details"
+        >
+          ×
+        </button>
+      </div>
+      <div id="detail-body"></div>
+      <div class="dialog-footer">
+        Raw file contents and internal storage paths are private.
+      </div>
+    </dialog>
+  </body>
+</html>
