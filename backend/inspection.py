@@ -1,7 +1,7 @@
-"""Bounded, metadata-only inspection using the existing reader's rules.
+"""Initial header inspection using the existing reader's detection rules.
 
-The CLI still supports decoding and extraction. The public web adapter only
-looks at a bounded prefix and never extracts, serves, or executes user content.
+The CLI still supports decoding and extraction. This adapter reads a bounded
+prefix. Content profiling and safe previews live in profiling.py/readers.py.
 """
 
 import importlib.util

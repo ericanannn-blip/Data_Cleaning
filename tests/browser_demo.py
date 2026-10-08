@@ -20,6 +20,7 @@ import time
 
 import httpx
 from playwright.sync_api import expect, sync_playwright
+from fixtures import image_bytes, pdf_bytes, zip_bytes
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def start_server(port, data_dir, log):
     environment = {**os.environ, "PORT": str(port), "APP_DATA_DIR": str(data_dir),
                    "DATABASE_PATH": str(data_dir / "app.db"), "UPLOAD_DIR": str(data_dir / "raw")}
+    environment["MAX_FILE_BYTES"] = "8192"
     process = subprocess.Popen([sys.executable, "-m", "backend"], cwd=ROOT, env=environment, stdout=log, stderr=log)
     try:
         with httpx.Client(trust_env=False, timeout=1) as client:
@@ -85,17 +87,17 @@ def main():
                     samples = [
                         {"name": "notes.dat", "mimeType": "application/octet-stream", "buffer": b"synthetic plain text"},
                         {"name": "measurements.dat", "mimeType": "application/octet-stream", "buffer": b'{"temperature":22}'},
-                        {"name": "signature.dat", "mimeType": "application/octet-stream", "buffer": b"\x89PNG\r\n\x1a\n" + bytes(range(24))},
+                        {"name": "signature.dat", "mimeType": "application/octet-stream", "buffer": image_bytes()},
                         {"name": "empty.dat", "mimeType": "application/octet-stream", "buffer": b""},
-                        {"name": "wrong.txt", "mimeType": "text/plain", "buffer": b"invalid extension"},
+                        {"name": "too-big.bin", "mimeType": "application/octet-stream", "buffer": b"x" * 8193},
                     ]
                     page.locator("#file-input").set_input_files(samples)
                     expect(page.locator("#selected-files li")).to_have_count(5)
-                    expect(page.locator(".queue-error")).to_have_text("Only .dat files are accepted.")
+                    expect(page.locator(".queue-error")).to_contain_text("file limit")
                     page.locator("#upload-button").click()
                     expect(page.locator("#page-message")).to_contain_text("4 files saved.")
                     expect(page.locator("#results-body tr")).to_have_count(4)
-                    expect(page.locator("#error-list")).to_contain_text("wrong.txt")
+                    expect(page.locator("#error-list")).to_contain_text("too-big.bin")
                     expect(page.locator("#results-body")).to_contain_text("PNG")
                     expect(page.locator("#results-body")).to_contain_text("JSON ≈")
                     expect(page.locator("#results-body")).to_contain_text("Needs review")
@@ -104,6 +106,8 @@ def main():
                     page.locator("#dismiss-errors").click()
                     page.get_by_role("button", name="Details for signature.dat").click()
                     expect(page.locator("#detail-dialog")).to_be_visible()
+                    page.wait_for_function("() => document.querySelector('#detail-body .preview-image')?.naturalWidth > 0")
+                    page.get_by_role("tab", name="Properties", exact=True).click()
                     expect(page.locator("#detail-body")).to_contain_text("image/png")
                     expect(page.locator("#detail-body")).to_contain_text("89504e470d0a1a0a")
                     page.get_by_role("button", name="Close file details").click()
@@ -123,14 +127,71 @@ def main():
                     page.locator("#upload-button").click()
                     expect(page.locator("#page-message")).to_contain_text("1 file saved.")
                     expect(page.locator("#results-body tr")).to_have_count(5)
+                    more = [
+                        {"name": "paper.pdf", "mimeType": "application/pdf", "buffer": pdf_bytes()},
+                        {"name": "bundle.zip", "mimeType": "application/zip", "buffer": zip_bytes([
+                            ("data/table.csv", b"id,value\n001,5\n002,7\n"),
+                            ("image.png", image_bytes()), ("../../outside.txt", b"blocked")])},
+                        {"name": "quality.csv", "mimeType": "text/csv", "buffer": b" ID ,amount\n001, 5 \n002,\n002,\n"},
+                    ]
+                    page.locator("#file-input").set_input_files(more)
+                    page.locator("#upload-button").click()
+                    expect(page.locator("#page-message")).to_contain_text("3 files saved.")
+                    expect(page.locator("#results-body tr")).to_have_count(8)
+                    page.get_by_role("button", name="Images 1", exact=True).click()
+                    expect(page.locator("#results-body tr")).to_have_count(1)
+                    page.get_by_role("button", name="All files 8", exact=True).click()
+                    expect(page.locator("#results-body tr")).to_have_count(8)
+                    page.get_by_role("button", name="Details for paper.pdf", exact=True).click()
+                    page.wait_for_function("() => document.querySelector('#detail-body .pdf-page')?.naturalWidth > 0")
+                    expect(page.locator(".pdf-text")).to_contain_text("Synthetic page one")
+                    page.get_by_role("button", name="Next page", exact=True).click()
+                    expect(page.locator(".pdf-text")).to_contain_text("Synthetic page two")
+                    if args.screenshots:
+                        page.screenshot(path=str(args.screenshots / "pdf-reader.png"))
+                    page.get_by_role("button", name="Close file details").click()
+                    page.get_by_role("button", name="Details for bundle.zip", exact=True).click()
+                    expect(page.locator(".archive-list")).to_contain_text("Unsafe member path")
+                    expect(page.locator(".archive-entry").nth(2).get_by_role("button", name="Read member")).to_be_disabled()
+                    page.locator(".archive-entry").first.get_by_role("button", name="Read member").click()
+                    expect(page.locator(".archive-preview")).to_contain_text("001")
+                    if args.screenshots:
+                        page.screenshot(path=str(args.screenshots / "zip-reader.png"))
+                    page.get_by_role("button", name="Close file details").click()
+                    page.get_by_role("button", name="Details for quality.csv", exact=True).click()
+                    expect(page.locator("#detail-body .sample-table").first).to_contain_text("001")
+                    page.get_by_role("tab", name="Schema & quality").click()
+                    expect(page.locator(".quality-list")).to_contain_text("Repeated rows")
+                    expect(page.locator(".quality-list")).to_contain_text("missing or null")
+                    page.get_by_role("button", name="Resample & save version", exact=True).click()
+                    expect(page.locator("#detail-title")).to_contain_text("v2")
+                    page.get_by_role("tab", name="History", exact=True).click()
+                    expect(page.locator(".history-row")).to_have_count(2)
+                    page.get_by_role("button", name="View sample", exact=True).click()
+                    expect(page.locator("#detail-title")).to_contain_text("v1")
+                    page.get_by_role("tab", name="Schema & quality").click()
+                    page.get_by_role("button", name="Review schema family", exact=True).click()
+                    expect(page.locator("#detail-title")).to_contain_text("CSV schema · v2")
+                    page.get_by_role("button", name="Confirm reviewed schema", exact=True).click()
+                    expect(page.locator(".schema-detail [role='status']")).to_contain_text("Review applies to this sample version")
+                    with page.expect_download() as download:
+                        page.get_by_role("button", name="Download schema JSON", exact=True).click()
+                    exported = json.loads(Path(download.value.path()).read_text())
+                    assert exported["version"] == 2 and exported["reviewed_at"]
+                    assert exported["definition"]["source_files"] == 1
+                    page.get_by_label("Schema version", exact=True).select_option("1")
+                    page.get_by_role("button", name="Inspect source", exact=True).click()
+                    expect(page.locator("#detail-title")).to_have_text("quality.csv · v1")
+                    page.get_by_role("button", name="Close file details").click()
                     page.reload()
-                    expect(page.locator("#results-body tr")).to_have_count(5)
+                    expect(page.locator("#results-body tr")).to_have_count(8)
+                    expect(page.locator("#schema-library")).to_contain_text("REVIEWED SAMPLE")
                     if args.screenshots:
                         page.screenshot(path=str(args.screenshots / "desktop.png"), full_page=True)
                     page.route("**/files?*", lambda route: route.abort())
                     page.locator("#refresh-button").click()
                     expect(page.locator("#list-error")).to_contain_text("Cannot reach the service")
-                    expect(page.locator("#results-body tr")).to_have_count(5)
+                    expect(page.locator("#results-body tr")).to_have_count(8)
                     page.unroute("**/files?*")
                     page.locator("#refresh-button").click()
                     expect(page.locator("#list-error")).to_be_hidden()
@@ -138,19 +199,21 @@ def main():
                     expect(page.locator("#upload-button")).to_be_visible()
                     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "Mobile page overflows horizontally"
                     page.get_by_role("button", name="Details for notes.dat").click()
+                    page.get_by_role("tab", name="Properties", exact=True).click()
                     expect(page.locator("#detail-body")).to_contain_text("heuristic")
                     page.get_by_role("button", name="Close file details").click()
                     if args.screenshots:
                         page.screenshot(path=str(args.screenshots / "mobile.png"), full_page=True)
                     with sqlite3.connect(data_dir / "app.db") as db:
                         count = db.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-                    assert count == 5
+                    assert count == 8
                     raw_before = {path.name: path.read_bytes() for path in (data_dir / "raw").glob("*.dat")}
-                    assert len(raw_before) == 5
+                    assert len(raw_before) == 8
                     stop_server(process)
                     process = start_server(port, data_dir, log)
                     page.reload()
-                    expect(page.locator("#results-body tr")).to_have_count(5)
+                    expect(page.locator("#results-body tr")).to_have_count(8)
+                    expect(page.locator("#schema-library")).to_contain_text("REVIEWED SAMPLE")
                     assert raw_before == {path.name: path.read_bytes() for path in (data_dir / "raw").glob("*.dat")}
                     assert not errors, errors
                     browser.close()
@@ -158,6 +221,8 @@ def main():
                                   "partial_errors": "passed", "classification": "passed", "details": "passed",
                                   "network_errors": "passed", "mobile": "passed", "sqlite_rows": count,
                                   "raw_files": len(raw_before), "process_restart_persistence": "passed",
+                                  "pdf_reader": "passed", "zip_member_preview": "passed", "category_filters": "passed",
+                                  "quality_checks": "passed", "resample_history": "passed", "schema_review_export": "passed",
                                   "browser_errors": errors}))
             except BaseException:
                 log.flush()

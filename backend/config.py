@@ -24,6 +24,7 @@ class Settings:
     max_files: int = 20
     max_storage_bytes: int = 500 * 1024 * 1024
     inspection_bytes: int = 64 * 1024
+    sample_rows: int = 200
 
     @classmethod
     def from_env(cls):

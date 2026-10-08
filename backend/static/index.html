@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Inspect the underlying formats of DAT files and review persistent file metadata."
+      content="Read files, inspect sampled content, and build traceable schema versions."
     />
     <title>DAT Lab · File inspector</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
@@ -30,14 +30,13 @@
           <div class="eyebrow">
             <span class="tiny-line"></span> INSPECT / CLASSIFY / REVIEW
           </div>
-          <h1>DAT file inspector<span class="heading-dot">.</span></h1>
+          <h1>File &amp; schema inspector<span class="heading-dot">.</span></h1>
           <p class="intro">
-            A <code>.dat</code> extension doesn't tell the whole story. Inspect
-            the underlying<br class="desktop-break" />
-            format, review file properties, and keep a record of every upload.
+            Read your files, understand their structure, and build schemas from
+            traceable samples. Original files stay intact.
           </p>
         </div>
-        <span class="demo-pill">FILE-LEVEL DEMO <span>v1.0</span></span>
+        <span class="demo-pill">CONTENT WORKSPACE <span>v2.0</span></span>
       </div>
       <div
         id="page-message"
@@ -49,7 +48,7 @@
         <div class="card upload-card">
           <div class="card-heading">
             <h2><span class="step-number">01</span>Upload files</h2>
-            <span class="small-tag">.DAT ONLY</span>
+            <span class="small-tag">MULTI-FORMAT</span>
           </div>
           <div id="drop-zone" class="drop-zone">
             <div class="upload-symbol" aria-hidden="true">
@@ -66,14 +65,13 @@
             <h3>Drop your files here</h3>
             <p>or select multiple files from your device</p>
             <label class="button button-secondary file-picker" for="file-input"
-              >Browse files <span aria-hidden="true">→</span>
+              >Browse files
               <input
                 id="file-input"
                 class="visually-hidden"
                 type="file"
-                accept=".dat"
                 multiple
-                aria-label="Choose DAT files"
+                aria-label="Choose files"
               />
             </label>
             <span id="upload-limits" class="upload-limits"
@@ -111,7 +109,7 @@
               type="button"
               disabled
             >
-              Upload &amp; inspect <span aria-hidden="true">→</span>
+              Upload &amp; inspect
             </button>
           </div>
         </div>
@@ -144,9 +142,10 @@
             <li>
               <span class="pipeline-number">3</span>
               <div>
-                <h3>Review the results</h3>
+                <h3>Read &amp; build schemas</h3>
                 <p>
-                  Inspect metadata and revisit saved records when you refresh.
+                  Preview content, review sampled fields and quality checks,
+                  and compare schema versions as evidence grows.
                 </p>
               </div>
             </li>
@@ -154,9 +153,9 @@
           <div class="privacy-note">
             <span aria-hidden="true">ⓘ</span>
             <p>
-              <strong>A shared demo. Use synthetic files.</strong><br />Metadata
-              is visible to everyone. Raw files aren't available for download.
-              Detection is an estimate, not a file safety scan.
+              <strong>A shared workspace. Use synthetic files.</strong><br />
+              Visitors can read previews and sampled values. Detection and
+              schemas describe the available evidence. Originals are retained.
             </p>
           </div>
         </aside>
@@ -201,6 +200,7 @@
             ><small>Heuristic or unknown format</small>
           </div>
         </div>
+        <nav id="category-nav" class="category-nav" aria-label="File categories"></nav>
         <div class="card results-card">
           <div class="results-toolbar">
             <div class="search-wrap">
@@ -208,15 +208,15 @@
               ><input
                 id="search"
                 type="search"
-                placeholder="Search loaded filenames…"
-                aria-label="Search loaded filenames"
+                placeholder="Search all filenames…"
+                aria-label="Search all filenames"
               />
             </div>
             <label class="filter-label"
               >Format
               <select
                 id="type-filter"
-                aria-label="Filter loaded records by format"
+                aria-label="Filter records by format"
               >
                 <option value="all">All formats</option>
               </select></label
@@ -249,27 +249,39 @@
           <div class="results-footer">
             <span id="showing-count">Loading…</span
             ><button id="load-more" class="text-button hidden" type="button">
-              Load more records ↓</button
-            ><span class="metadata-only">METADATA ONLY</span>
+              Load more records</button
+            ><span class="metadata-only">ORIGINALS RETAINED</span>
           </div>
         </div>
         <p class="classification-note">
           <span aria-hidden="true">ⓘ</span> Signature matches identify a likely
           format. Text detection is heuristic; unknown and empty files remain
-          available for review. Archives are identified without extraction.
+          available for review. ZIP members are previewed without extraction.
         </p>
+      </section>
+      <section class="schema-section" aria-labelledby="schemas-title">
+        <div class="section-heading">
+          <div><div class="eyebrow">OBSERVE / REVIEW / EVOLVE</div>
+            <h2 id="schemas-title">Schema library <span id="schema-count" class="count-badge">0</span></h2>
+          </div>
+          <button id="refresh-schemas" class="button button-secondary" type="button">Refresh schemas</button>
+        </div>
+        <p class="schema-intro">Files with the same format, record grain, and observed field paths share a candidate schema.
+          Each new sample keeps a version and its source evidence.</p>
+        <div id="schema-error" class="notice error hidden" role="alert"></div>
+        <div id="schema-library" class="schema-library"></div>
       </section>
       <footer class="footer">
         <span
           >DAT Lab <span class="footer-separator">/</span> File ingestion &amp;
           classification</span
-        ><a href="/docs" target="_blank" rel="noopener">API reference →</a>
+        ><a href="/docs" target="_blank" rel="noopener">API reference</a>
       </footer>
     </main>
     <dialog id="detail-dialog" aria-labelledby="detail-title">
       <div class="dialog-header">
         <div>
-          <div class="eyebrow">FILE METADATA</div>
+          <div class="eyebrow">CONTENT / SCHEMA / EVIDENCE</div>
           <h2 id="detail-title">File details</h2>
         </div>
         <button
@@ -283,7 +295,7 @@
       </div>
       <div id="detail-body"></div>
       <div class="dialog-footer">
-        Raw file contents and internal storage paths are private.
+        Samples and cleaning suggestions preserve the original bytes. Review a schema before using it downstream.
       </div>
     </dialog>
   </body>

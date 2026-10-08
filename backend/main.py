@@ -2,9 +2,13 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+import hashlib
+import io
+import logging
+import sqlite3
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
@@ -12,6 +16,8 @@ from python_multipart.exceptions import MultipartParseError
 
 from .config import Settings
 from .storage import Storage
+from .profiling import build_profile
+from .readers import ReaderError, image_png, pdf_page, zip_member
 
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -87,7 +93,7 @@ def create_app(settings: Settings | None = None):
         await run_in_threadpool(storage.initialize)
         yield
 
-    app = FastAPI(title="DAT File Inspector", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="DAT File Inspector", version="2.0.0", lifespan=lifespan)
     app.state.storage = storage
     app.add_middleware(RequestLimitMiddleware, max_bytes=settings.max_request_bytes)
     app.add_middleware(SecurityHeadersMiddleware)
@@ -96,6 +102,16 @@ def create_app(settings: Settings | None = None):
     @app.exception_handler(MultipartParseError)
     async def malformed_multipart(request, exc):
         return JSONResponse({"detail": "Invalid multipart upload. Select your files and try again."}, 400)
+
+    @app.exception_handler(ReaderError)
+    async def reader_error(request, exc):
+        return JSONResponse({"detail": str(exc)}, 422)
+
+    @app.exception_handler(OSError)
+    @app.exception_handler(sqlite3.Error)
+    async def unavailable_content(request, exc):
+        logging.getLogger(__name__).exception("File storage unavailable")
+        return JSONResponse({"detail": "File storage is temporarily unavailable. Please retry."}, 503)
 
     @app.get("/", include_in_schema=False)
     def frontend():
@@ -113,8 +129,10 @@ def create_app(settings: Settings | None = None):
                 "max_files": settings.max_files}
 
     @app.get("/files")
-    def list_files(limit: int = Query(100, ge=1, le=200), offset: int = Query(0, ge=0)):
-        return storage.list_files(limit, offset)
+    def list_files(limit: int = Query(100, ge=1, le=200), offset: int = Query(0, ge=0),
+                   category: str | None = Query(None, max_length=30), q: str = Query("", max_length=255),
+                   detected_type: str | None = Query(None, max_length=30)):
+        return storage.list_files(limit, offset, category, q, detected_type)
 
     @app.get("/files/{file_id}")
     def file_detail(file_id: str):
@@ -122,6 +140,79 @@ def create_app(settings: Settings | None = None):
         if record is None:
             raise HTTPException(404, "File record not found.")
         return record
+
+    def require_file(file_id):
+        record = storage.get_file(file_id)
+        if record is None:
+            raise HTTPException(404, "File record not found.")
+        return record
+
+    def source(file_id, entry=None):
+        require_file(file_id)
+        path = storage.raw_path(file_id)
+        if entry is not None:
+            _, data = zip_member(path, entry)
+            return io.BytesIO(data)
+        return path
+
+    @app.get("/files/{file_id}/profile")
+    def file_profile(file_id: str, version: int | None = Query(None, ge=1)):
+        require_file(file_id)
+        profile = storage.get_profile(file_id, version)
+        if profile is None:
+            raise HTTPException(404, "Profile version not found.")
+        return profile
+
+    @app.get("/files/{file_id}/history")
+    def file_history(file_id: str):
+        require_file(file_id)
+        return {"versions": storage.profile_history(file_id)}
+
+    @app.post("/files/{file_id}/resample")
+    def resample(file_id: str, sample_bytes: int = Query(262144, ge=1024, le=1048576),
+                 sample_rows: int = Query(500, ge=1, le=2000)):
+        require_file(file_id)
+        return storage.resample(file_id, sample_bytes, sample_rows)
+
+    @app.get("/files/{file_id}/image")
+    def read_image(file_id: str, entry: int | None = Query(None, ge=0)):
+        return Response(image_png(source(file_id, entry)), media_type="image/png")
+
+    @app.get("/files/{file_id}/pages/{page_number}")
+    def read_pdf_text(file_id: str, page_number: int, entry: int | None = Query(None, ge=0)):
+        return pdf_page(source(file_id, entry), page_number)
+
+    @app.get("/files/{file_id}/pages/{page_number}/image")
+    def read_pdf_image(file_id: str, page_number: int, entry: int | None = Query(None, ge=0)):
+        return Response(pdf_page(source(file_id, entry), page_number, as_image=True), media_type="image/png")
+
+    @app.get("/files/{file_id}/archive/{entry}/profile")
+    def read_archive_member(file_id: str, entry: int):
+        require_file(file_id)
+        name, data = zip_member(storage.raw_path(file_id), entry)
+        return {"name": name, "profile": build_profile(io.BytesIO(data), name, len(data), hashlib.sha256(data).hexdigest())}
+
+    @app.get("/schemas")
+    def schemas():
+        return {"schemas": storage.schemas()}
+
+    @app.get("/schemas/{key}")
+    def schema_history(key: str):
+        history = storage.schema_history(key)
+        if not history:
+            raise HTTPException(404, "Schema not found.")
+        return {"id": key, "versions": history}
+
+    @app.post("/schemas/{key}/confirm")
+    def confirm_schema(key: str, version: int = Query(..., ge=1)):
+        result = storage.confirm_schema(key, version)
+        if result == "missing":
+            raise HTTPException(404, "Schema not found.")
+        if result == "stale":
+            raise HTTPException(409, "Schema has changed. Reload and review the latest version.")
+        if result == "retired":
+            raise HTTPException(409, "Schema family has no active evidence. Inspect the file's current schema.")
+        return next(item for item in storage.schema_history(key) if item["version"] == version)
 
     @app.post("/files", openapi_extra={
         "requestBody": {"required": True, "content": {"multipart/form-data": {"schema": {
