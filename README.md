@@ -1,29 +1,96 @@
-# DAT File Ingestion and Classification
+# DAT Lab: File Readers and Schema Workspace
 
-A shared web demo that stores multiple `.dat` uploads, detects likely underlying
-file formats, and lets visitors inspect persistent metadata. A `.dat` extension
-does not specify a format. Detection uses the existing DAT reader's signature
-and text rules; it does not classify the meaning of content.
+A shared workspace for multi-format uploads, content-first classification,
+built-in reading, data-quality review, and versioned sample-driven schemas.
+Extensions are display metadata; signatures and parseable content provide
+classification evidence. Original bytes are retained under private UUID names.
+This extends the ingestion demo without changing the DAT CLI.
 
-**Deployment status:** implemented and verified locally, including Docker volume
-persistence. There is no verified public URL yet. This workspace has no Railway
-credentials, and its proxy denies the Railway API. Public deployment and public
-health checks remain pending an authenticated Railway environment with network
-access. Do not treat the local preview as a public deployment.
+**Delivery:** this version is delivered through a feature branch and Pull
+Request. A local preview or browser test is not a deployed version. Production
+publication remains a separate step; the Railway configuration is preserved.
 
 ## Architecture
 
 ```text
-Browser → FastAPI (frontend + API) → existing DAT detection rules
-                                  ├── SQLite: metadata
+Browser → FastAPI (frontend + API) → signatures + bounded readers/profiling
+                                  ├── SQLite: metadata, profile/schema history
                                   └── private filesystem: original bytes
 ```
 
 One service, one worker, one persistent volume. The lightweight frontend needs
 no Node build. The existing [command-line reader](dat-file-reader/README.md) and
 its seven tests are preserved; the web adapter reuses its detection functions.
-The CLI still supports extraction. The public web demo inspects metadata only
-and never extracts archives or serves raw uploaded files.
+The CLI still supports extraction. The web workspace reads ZIP members in
+bounded memory buffers without extracting them. Images and PDF pages are
+re-encoded as PNG; HTML/XML and other text are displayed as text. There is no
+original-file download endpoint.
+
+## Workspace sections and readers
+
+- Categories cover tables/JSON, documents, images, archives, text, audio,
+  video, databases and unrecognized content. Search and format/category filters
+  run on all saved records, including unloaded pages.
+- Details have **Read**, **Schema & quality**, **Properties** and **History** views.
+- PNG, JPEG, GIF, WebP, BMP and TIFF use an image reader with zoom.
+- PDF has page images, previous/next navigation and bounded text extraction.
+  Scanned PDFs remain readable as images; OCR is not included.
+- ZIP has entry listings and previews for readable text, tables, images and
+  PDFs. Unsafe paths, symbolic links, duplicate member names, encrypted members
+  and oversized members are blocked. Nested ZIPs are listed without traversal.
+- CSV, TSV, JSON and NDJSON have sampled tables, preserving original names
+  and values. Plain text and XML/HTML have escaped text previews.
+- Other signature-recognized formats have metadata and hexadecimal previews.
+  Unknown, empty and damaged files remain stored with review notes.
+
+## Sampling, quality and schema evolution
+
+Text profiling reads a bounded prefix (64 KiB by default) and uses a
+SHA-256-seeded reservoir over parseable candidate records within that window.
+This is **not** a uniform sample of an entire larger file. Resampling supports
+up to 1 MiB and 2,000 records. Complete JSON array elements inside a partial
+prefix can contribute evidence; cut-off elements are excluded. A partial JSON
+object is not used to fabricate structured records. Malformed JSON lines and
+delimited rows are reported and excluded from inference.
+
+Each profile records the analyzer version, method, seed, source hash, byte/row
+budgets, scanned candidate count, sampled count and completeness. A profile
+scans at most 10,000 candidate records, infers at most 200 fields and retains
+50 preview rows. Nested objects use escaped JSON Pointer paths to depth eight;
+arrays remain array-valued fields. Metadata readers use an image, document or
+archive-entry grain, rather than claiming pixel or page-content schemas.
+Their input bytes are bounded by the upload limit.
+
+Checks identify missing/null values, conflicting types, surrounding whitespace,
+duplicate sample rows, colliding field names, invalid records and identical
+file hashes. Proposed field names use Unicode NFKC, trimming, lowercase and
+underscores; collisions receive distinct suffixes. CSV/TSV values may propose
+numeric, boolean or ISO date types; leading-zero identifiers stay strings.
+Their null markers are empty strings, `null`, `na` and `n/a` (case-insensitive).
+JSON primitive types and quoted strings are preserved. These are proposals,
+not destructive transformations. Deduplication requires checking the record
+grain; original values remain intact.
+
+Files initially share a candidate family only when format, grain and original
+observed field paths match exactly. Classification does not infer business
+meaning from filenames. Resampling retains the family when format and grain
+match and records added, removed or changed fields. Format/grain changes move
+evidence to a separate family. A schema revision aggregates only the latest
+profile per source file, so repeated sampling does not double-count evidence.
+Earlier revisions retain their original source references.
+
+The library supports version comparison, source inspection, reviewing the
+latest candidate, and downloading its definition/evidence as JSON. Review
+applies to that sampled version. Later evidence creates a fresh candidate;
+stale confirmation receives HTTP 409. Schemas describe observed samples and
+do not establish constraints for unseen records.
+Resampling verifies the stored original against its upload hash before saving
+new evidence. Inspecting a historical schema opens its referenced profile
+version, rather than replacing that source with the latest sample.
+
+Existing databases receive additive history tables. Legacy files are profiled
+on first detail inspection or explicit resampling. Metadata, profile versions,
+schema revisions and review state persist in SQLite across restarts.
 
 ## Local setup
 
@@ -63,13 +130,15 @@ python tests/browser_demo.py --screenshots test-results
 The script can also use a preinstalled `chromium` automatically, or an explicit
 `CHROMIUM_PATH`. It starts an isolated production server, uploads synthetic
 files using the UI, checks partial errors, drag-and-drop, detail views, search,
-filters, network errors, page refresh, mobile layout, SQLite rows, raw files,
-and persistence after stopping and starting the server. Temporary uploads are
+filters, PDF pages/text, ZIP member previews, data-quality review, sampling
+history, schema confirmation/export, network errors, page refresh, mobile
+layout, SQLite rows, raw files, and persistence after restarting. Temporary uploads are
 deleted afterward; screenshots are ignored by Git.
 
-Verified in this workspace: **27 unit tests pass** (7 original reader + 20 API),
-browser acceptance passes with no JavaScript errors, Docker builds, and SQLite
-records and original file hashes survive container replacement on a named volume.
+Browser acceptance verifies that records, reviewed schemas, profile history
+and original file bytes survive an actual server restart, with no JavaScript
+errors. Run the two unit suites above for the current test count. Container
+publication is a separate check.
 
 ## API
 
@@ -79,6 +148,16 @@ records and original file hashes survive container replacement on a named volume
 | `POST /files` | Multipart upload; repeat the `files` field for each file |
 | `GET /files?limit=100&offset=0` | Newest records, total, and global summary; max page size 200 |
 | `GET /files/{file_id}` | One saved metadata record; 404 if absent |
+| `GET /files/{file_id}/profile?version=N` | Current or historical content profile; lazy first profile for legacy files |
+| `GET /files/{file_id}/history` | Profile versions and sampling evidence |
+| `POST /files/{file_id}/resample?sample_bytes=262144&sample_rows=500` | Append profile/schema revisions from original bytes |
+| `GET /files/{file_id}/image` | Re-encoded image preview |
+| `GET /files/{file_id}/pages/{page}` | Bounded PDF text; one-based page numbers |
+| `GET /files/{file_id}/pages/{page}/image` | Rasterized PDF page |
+| `GET /files/{file_id}/archive/{entry}/profile` | In-memory member preview; zero-based directory index |
+| `GET /schemas` | Current active schema families |
+| `GET /schemas/{key}` | Revisions, drift and sampling evidence |
+| `POST /schemas/{key}/confirm?version=N` | Mark the latest sample as reviewed; 409 for a stale version |
 | `GET /health` | Lightweight SQLite connectivity check; `{"status":"ok"}` |
 | `GET /config` | Public upload limits; no internal paths |
 | `GET /docs` | Interactive API reference |
@@ -91,16 +170,23 @@ oversized entire requests return HTTP 4xx before ingestion.
 Records contain `original_name`, `extension`, `file_size`, `mime_type`,
 `encoding`, `magic_bytes` (first 32 bytes in hex), `printable_ratio`,
 `sample_bytes`, `detected_type`, `confidence`, `status`, `created_at`,
-`error_message`, and `sha256`. The printable ratio counts ASCII printable
+`error_message`, `sha256`, `category`, `reader`, `profile_version`, `schema_key`,
+`quality_issues`, and `duplicate_files`. The printable ratio counts ASCII printable
 bytes plus tab/newline/carriage return in the inspected sample; it is not a
 Unicode readability score. Internal filesystem paths are never returned.
 
-Signature matches are labeled `confidence: "signature"`; text/JSON/XML/HTML and
+List queries accept `category`, `q` and `detected_type`. `total` counts matching
+records, while `summary` and `categories` are global. Image and PDF endpoints
+also accept `?entry=N` for ZIP members. No endpoint accepts arbitrary local
+paths or extraction targets.
+
+Signature matches are labeled `confidence: "signature"`; text/JSON/CSV/TSV/
+NDJSON/XML/HTML and
 encoding estimates are `"heuristic"`. Empty or unidentified files use
 `status: "unsupported"`, remain persisted, and are shown for review. Headers
 identify a likely format, not file integrity or safety. ZIP-based office files
-are reported as ZIP in this metadata-only demo; compressed content and XOR
-images are not decoded by the web adapter. The original CLI supports those
+are read as ZIP containers; compressed streams and XOR images are not decoded
+by the web adapter. The original CLI supports those
 additional transformations.
 
 ## Storage and limits
@@ -127,12 +213,19 @@ See [.env.example](.env.example). Export variables before startup; the app does
 not automatically load `.env`. Store uploads outside the static asset directory.
 Databases, uploads, `.env` files, and browser output are excluded from Git.
 
-This is an unauthenticated, shared demo. Use synthetic files: all visitors can
-see metadata, including original filenames and header bytes. Raw contents have
-no public download route. The storage cap rejects further uploads when full;
+This is an unauthenticated, shared workspace. Use synthetic files: visitors can
+see metadata, content previews, sampled values and schema evidence. Original
+bytes have no public download route. The storage cap rejects uploads when full;
 there is no public delete endpoint. Operators manage retention and backups.
 Back up the database consistently with SQLite's backup API and preserve the raw
 directory; do not copy just a live WAL database file.
+
+Reader limits: 25 megapixels per image; PDF output is scaled to a longest side
+of at most 1,400 pixels and text to 8,000 characters per page; ZIP directories
+are limited to 1,000 entries and 50 MiB declared expanded size. Each member is
+limited to 2 MiB, with a compression-ratio check. Reader failure does not
+discard the stored original. PDFium operations are serialized because its
+native API is not thread-safe.
 
 ## Docker
 

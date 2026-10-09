@@ -31,7 +31,7 @@ class ApiTests(unittest.TestCase):
     def test_frontend_assets_health_and_config(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("DAT file inspector", response.text)
+        self.assertIn("File &amp; schema inspector", response.text)
         self.assertIn("script-src 'self'", response.headers["content-security-policy"])
         for asset in ("styles.css", "app.js", "favicon.svg"):
             self.assertEqual(self.client.get(f"/static/{asset}").status_code, 200)
@@ -61,13 +61,13 @@ class ApiTests(unittest.TestCase):
             self.assertEqual((self.settings.upload_dir / f'{result["id"]}.dat').read_bytes(), original)
             self.assertNotIn(self.temp.name, json.dumps(result))
 
-    def test_partial_invalid_files_keep_successes(self):
+    def test_multiple_extensions_and_unknown_files_keep_successes(self):
         body = self.post([("valid.dat", b"hello"), ("bad.txt", b"bad"), ("unknown.dat", b"\x00\x01\xff\x03")]).json()
-        self.assertEqual((body["succeeded"], body["failed"]), (2, 1))
-        self.assertEqual(body["files"][1]["status"], "error")
-        self.assertIn("Only .dat", body["files"][1]["error_message"])
+        self.assertEqual((body["succeeded"], body["failed"]), (3, 0))
+        self.assertEqual(body["files"][1]["extension"], ".txt")
+        self.assertEqual(body["files"][1]["reader"], "text")
         self.assertEqual(body["files"][2]["status"], "unsupported")
-        self.assertEqual(self.client.get("/files").json()["total"], 2)
+        self.assertEqual(self.client.get("/files").json()["total"], 3)
 
     def test_empty_and_unknown_are_persisted_for_review(self):
         body = self.post([("empty.dat", b""), ("binary.dat", b"\x00\x01\x02")]).json()
@@ -95,7 +95,7 @@ class ApiTests(unittest.TestCase):
         record = self.post([("private.dat", b"private")]).json()["files"][0]
         for path in (f'/data/raw/{record["id"]}.dat', f'/raw/{record["id"]}.dat', f'/static/../data/raw/{record["id"]}.dat'):
             self.assertEqual(self.client.get(path).status_code, 404)
-        self.assertEqual(set(record), {"id", "original_name", "extension", "file_size", "mime_type", "encoding", "magic_bytes", "printable_ratio", "sample_bytes", "detected_type", "confidence", "status", "created_at", "error_message", "sha256"})
+        self.assertEqual(set(record), {"id", "original_name", "extension", "file_size", "mime_type", "encoding", "magic_bytes", "printable_ratio", "sample_bytes", "detected_type", "confidence", "status", "created_at", "error_message", "sha256", "category", "reader", "profile_version", "schema_key", "quality_issues", "duplicate_files"})
 
     def test_archives_classify_without_extraction(self):
         buffer = io.BytesIO()
