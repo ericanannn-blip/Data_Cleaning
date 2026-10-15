@@ -12,6 +12,10 @@ const state = {
   recordsToken: 0,
   category: "all",
   schemas: [],
+  informationSchemas: [],
+  informationBusy: false,
+  informationRuns: [],
+  informationToken: 0,
 };
 const formatBytes = (bytes) =>
   bytes < 1024
@@ -49,9 +53,10 @@ function connection(online) {
 
 async function api(path, options = {}) {
   try {
+    const {timeout = 15000, ...fetchOptions} = options;
     const response = await fetch(path, {
-      ...options,
-      signal: AbortSignal.timeout(15000),
+      ...fetchOptions,
+      signal: AbortSignal.timeout(timeout),
     });
     const body = await response.json();
     if (!response.ok)
@@ -387,6 +392,7 @@ async function loadRecords(append = false) {
     state.loading = false;
     $("refresh-button").disabled = false;
     $("load-more").disabled = false;
+    updateInformationControls();
   }
 }
 
@@ -682,7 +688,7 @@ function renderFileDetail(file, profile, history) {
       }));
       versions.append(row);
     }
-    const detail = tabs([["Read", read], ["Schema & quality", schema], ["Properties", list], ["History", versions]]);
+    const detail = tabs([["Read", read], ["Schema & quality", schema], ["Properties", list], ["History", versions], ["Information", informationPanel(file)]]);
     $("detail-body").append(detail.root);
 }
 
@@ -814,16 +820,165 @@ $("detail-dialog").addEventListener("click", (event) => {
   }
 });
 window.addEventListener("beforeunload", (event) => {
-  if (state.busy) {
+  if (state.busy || state.informationBusy) {
     event.preventDefault();
     event.returnValue = "";
   }
+});
+
+function downloadInformation(data, filename) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: "application/json"}));
+  const link = element("a"); link.href = url; link.download = filename;
+  link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function renderInformationRun(run) {
+  const card = element("article", "card information-run");
+  card.append(element("h3", "", `${run.schema.name} · ${run.source.name}`));
+  card.append(element("p", "sampling-note", `${run.records.length} record(s) · ${run.source.format.toUpperCase()} · ${run.complete ? "Within reader scope" : "Partial · review required"} · ${run.created_at ? formatDate(run.created_at) : ""}`));
+  card.append(action("Download result & evidence", () => downloadInformation(run, `information-${run.id}.json`)));
+  card.append(action("Download field schema", () => downloadInformation(run.json_schema, `information-schema-${run.schema_id}.json`)));
+  for (const note of run.notes) card.append(element("p", "quality-note info", note));
+  if (!run.records.length) card.append(element("p", "", "No readable records were extracted. Review the document and reader scope."));
+  for (const record of run.records.slice(0, 50)) {
+    const details = element("details");
+    details.append(element("summary", "", `Record ${record.record} · ${record.status} · ${JSON.stringify(record.location)}`));
+    const wrapper = element("div", "table-wrapper");
+    const table = element("table");
+    const head = element("tr");
+    for (const text of ["Field", "Value", "Status", "Source evidence"]) head.append(element("th", "", text));
+    const thead = element("thead"); thead.append(head); table.append(thead);
+    const body = element("tbody");
+    for (const [key, value] of Object.entries(record.fields)) {
+      const row = element("tr");
+      row.append(element("td", "mono", key), element("td", "", value.value === null ? "—" : String(value.value)), element("td", "", `${value.status}${value.required ? " · required" : ""}`));
+      const evidence = element("td");
+      for (const source of value.evidence) {
+        evidence.append(element("p", "", `${JSON.stringify(source.location)} · ${source.method}`), element("pre", "", source.excerpt));
+        if (source.error) evidence.append(element("p", "quality-note", source.error));
+      }
+      row.append(evidence); body.append(row);
+    }
+    table.append(body); wrapper.append(table); details.append(wrapper); card.append(details);
+  }
+  if (run.records.length > 50) card.append(element("p", "sampling-note", "Showing 50 records. Download the result to inspect every extracted record."));
+  return card;
+}
+
+function updateInformationControls() {
+  const ready = Boolean($("information-schema-select").value);
+  $("extract-loaded").disabled = !ready || state.informationBusy || state.loading || !state.records.length;
+  $("extract-loaded").textContent = state.informationBusy ? "Extracting…" : `Extract ${state.records.length} loaded files`;
+  $("information-schema-select").disabled = state.informationBusy;
+  $("edit-information").disabled = !ready || state.informationBusy;
+}
+
+async function loadInformationSchemas(selected = null) {
+  const data = await api("/information/schemas");
+  state.informationSchemas = data.schemas;
+  const previous = selected || $("information-schema-select").value;
+  $("information-schema-select").replaceChildren(new Option("Select an information schema", ""));
+  for (const schema of data.schemas) $("information-schema-select").add(new Option(`${schema.definition.name} · ${schema.id.slice(0, 8)}`, schema.id));
+  if (data.schemas.some((schema) => schema.id === previous)) $("information-schema-select").value = previous;
+  updateInformationControls();
+}
+
+async function loadInformationRuns(append = false) {
+  const token = ++state.informationToken;
+  const params = new URLSearchParams({limit: "20", offset: String(append ? state.informationRuns.length : 0)});
+  if ($("information-schema-select").value) params.set("schema_id", $("information-schema-select").value);
+  $("more-information").disabled = true;
+  try {
+    const data = await api(`/information/runs?${params}`);
+    if (token !== state.informationToken) return;
+    state.informationRuns = append ? [...state.informationRuns, ...data.runs] : data.runs;
+    $("information-results").replaceChildren(...state.informationRuns.map(renderInformationRun));
+    if (!state.informationRuns.length) $("information-results").append(element("p", "sampling-note", "No information runs yet. Save a schema and extract loaded files, or open a file’s Information tab."));
+    $("more-information").classList.toggle("hidden", state.informationRuns.length >= data.total);
+  } finally { if (token === state.informationToken) $("more-information").disabled = false; }
+}
+
+function informationPanel(file) {
+  const panel = element("div");
+  panel.append(element("p", "sampling-note", "Apply an information schema to this file. Rules inspect content and preserve source evidence. Create or edit templates in Information schemas below the file list."));
+  const select = element("select"); select.setAttribute("aria-label", "Information schema for this file");
+  const feedback = element("p", "sampling-note"); feedback.setAttribute("role", "status");
+  const results = element("div", "information-results");
+  const run = action("Extract information", async () => {
+    run.disabled = true; feedback.textContent = "Extracting information…";
+    try {
+      const data = await api(`/files/${encodeURIComponent(file.id)}/extract?schema_id=${encodeURIComponent(select.value)}`, {method: "POST", timeout: 120000});
+      results.prepend(renderInformationRun(data)); feedback.textContent = "Extraction saved. Review values and source evidence.";
+    } catch (error) { feedback.textContent = error.message; }
+    finally { run.disabled = !select.value; }
+  });
+  run.disabled = true;
+  select.addEventListener("change", () => {run.disabled = !select.value;});
+  panel.append(select, run, feedback, results);
+  Promise.all([api("/information/schemas"), api(`/information/runs?file_id=${encodeURIComponent(file.id)}`)]).then(([templates, history]) => {
+    select.add(new Option("Select an information schema", ""));
+    for (const schema of templates.schemas) select.add(new Option(`${schema.definition.name} · ${schema.id.slice(0, 8)}`, schema.id));
+    results.replaceChildren(...history.runs.map(renderInformationRun));
+    if (history.total > history.runs.length) feedback.textContent = "Showing the latest 20 runs for this file. Browse more in Information schemas.";
+  }).catch((error) => {feedback.textContent = error.message;});
+  return panel;
+}
+
+$("information-template").value = JSON.stringify({name: "Contact information (example)", entity: "person", fields: [
+  {name: "person_name", type: "string", aliases: ["姓名", "Name", "联系人"], paths: [], required: true},
+  {name: "organization", type: "string", aliases: ["机构", "单位", "Organization"], paths: [], required: false},
+  {name: "date", type: "date", aliases: ["日期", "Date"], paths: [], required: false},
+]}, null, 2);
+
+$("save-information").addEventListener("click", async () => {
+  $("save-information").disabled = true;
+  try {
+    let definition;
+    try {definition = JSON.parse($("information-template").value);} catch {throw new Error("The template must be valid JSON.");}
+    const schema = await api("/information/schemas", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(definition)});
+    await loadInformationSchemas(schema.id); await loadInformationRuns();
+    $("information-message").textContent = `Saved ${schema.definition.name} · ${schema.id.slice(0, 8)}. Changes create a new definition; previous runs retain their template.`;
+  } catch (error) {$("information-message").textContent = error.message;}
+  finally {$("save-information").disabled = false;}
+});
+$("edit-information").addEventListener("click", () => {
+  const schema = state.informationSchemas.find((item) => item.id === $("information-schema-select").value);
+  if (schema) $("information-template").value = JSON.stringify(schema.definition, null, 2);
+});
+$("information-schema-select").addEventListener("change", () => {
+  updateInformationControls(); loadInformationRuns().catch((error) => {$("information-progress").textContent = error.message;});
+});
+$("more-information").addEventListener("click", () => loadInformationRuns(true).catch((error) => {$("information-progress").textContent = error.message;}));
+$("refresh-information").addEventListener("click", async () => {
+  try {await loadInformationSchemas(); await loadInformationRuns(); $("information-progress").textContent = "Information refreshed.";}
+  catch (error) {$("information-progress").textContent = error.message;}
+});
+$("extract-loaded").addEventListener("click", async () => {
+  const ids = state.records.map((file) => file.id), schemaId = $("information-schema-select").value;
+  state.informationBusy = true; updateInformationControls();
+  let succeeded = 0, failed = 0;
+  const errors = [];
+  try {
+    for (let index = 0; index < ids.length; index += 20) {
+      $("information-progress").textContent = `Extracting ${index + 1}–${Math.min(ids.length, index + 20)} of ${ids.length} loaded files…`;
+      const data = await api("/information/extract", {method: "POST", timeout: 120000, headers: {"Content-Type": "application/json"}, body: JSON.stringify({schema_id: schemaId, file_ids: ids.slice(index, index + 20)})});
+      succeeded += data.succeeded; failed += data.failed;
+      for (const result of data.results) if (result.error) errors.push(`${state.records.find((file) => file.id === result.file_id)?.original_name || result.file_id}: ${result.error}`);
+    }
+    await loadInformationRuns();
+    $("information-progress").textContent = `${succeeded} files extracted; ${failed} need attention. ${errors.join(" ")}`;
+  } catch (error) {$("information-progress").textContent = `${succeeded} files extracted; ${failed} failed before interruption. ${error.message} Refresh information to inspect saved runs.`;}
+  finally {state.informationBusy = false; updateInformationControls();}
 });
 
 async function initialize() {
   await Promise.all([
     loadRecords(),
     loadSchemas(),
+    (async () => {
+      try {await loadInformationSchemas(); await loadInformationRuns();}
+      catch (error) {$("information-progress").textContent = error.message;}
+    })(),
     (async () => {
       try {
         state.limits = await api("/config");

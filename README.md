@@ -43,6 +43,76 @@ original-file download endpoint.
 - Other signature-recognized formats have metadata and hexadecimal previews.
   Unknown, empty and damaged files remain stored with review notes.
 
+## Information schemas and local document extraction
+
+The **Information schemas** workspace adds a separate information layer. Define
+an entity, named fields, types, aliases and optional JSON Pointer paths. The
+same immutable template applies across file formats without changing the
+existing format-based schema families. Text/PDF/DOCX readers match explicit
+`label: value`, `标签：值` or `label=value` lines; structured readers select table
+headers or JSON keys/paths. This is deterministic rule-based extraction, not
+free-text semantic interpretation.
+
+Each saved run retains its template, source SHA-256, original values, reader
+scope and evidence locations (PDF page/line, DOCX paragraph, text/NDJSON line,
+CSV row ending line, or JSON Pointer). Missing required fields, invalid types,
+conflicting candidates and partial reads require review. Original bytes stay
+unchanged. Template edits create a new content-addressed ID; prior templates
+and runs survive restarts. Results and the field contract can be exported as
+JSON. Null placeholders in incomplete extraction results are not valid values
+under the exported field contract; check field status before using results.
+
+Use **Information** in a file's detail dialog for one file, or **Extract loaded
+files** for the current loaded/search-filtered list. The UI sends batches of
+20; more saved files can be loaded before extraction. Runs are paginated and
+filterable by template. The example contact template is a demonstration,
+not a claim about the user's documents.
+
+To process a local folder without uploading originals or extracted values,
+run this on the computer where the directory exists, from the repository root:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m backend.extract_local --root "D:\documents\ai" --schema examples/information-schema.json --output "D:\documents\information-results.jsonl" --recursive
+```
+
+Edit [the template](examples/information-schema.json) to select the actual
+fields first. `--include "*.dat" --include "*.pdf"` restricts filenames;
+without `--include`, every regular file within the selected directory is a
+candidate. Symlinks and the template/output files are skipped. No server,
+network, database or original-file copy is involved. Source files are never
+modified, and existing output files are never overwritten. JSONL has one
+result or error per source file; processing continues after file-level errors
+and returns exit code 1 if any file failed. Extraction results can contain
+the selected document information; store the output accordingly.
+
+Readers support UTF text, JSON, NDJSON, CSV/TSV, PDF text layers and DOCX main
+body paragraphs (including paragraphs inside tables). Images/scans need OCR;
+generic archives and other binary formats require another reader. DOCX
+headers/footers, comments and attachments are excluded. Side-by-side DOCX
+table cells are not interpreted as label/value pairs. Text budgets are 1 MiB,
+2,000 structured records, 10,000 plain text lines, 20 PDF pages and 8,000
+characters per PDF page. Large JSON documents are rejected rather than parsed
+partially; split them or use NDJSON. Truncated final text/table lines are
+excluded. Structured aliases inspect at most 200 object fields to depth eight;
+explicit paths can select nested arrays. At most 20 candidates per field are
+retained; excess candidates produce a conflict. Stored upload hashes are
+verified before new extraction evidence is saved.
+
+Additional API endpoints:
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /information/schemas` | Validate and persist an immutable information template |
+| `GET /information/schemas` | List saved templates and exported field contracts |
+| `POST /files/{file_id}/extract?schema_id=...` | Append extraction evidence for one source |
+| `POST /information/extract` | Body: `schema_id` and up to 20 `file_ids`; partial failures retained |
+| `GET /information/runs?file_id=...&schema_id=...&limit=20&offset=0` | Paginated immutable extraction runs |
+
+These endpoints have the same shared-workspace visibility as uploads. The
+local directory processor is the appropriate entry point for content that
+should stay on the local computer; web routes never accept local paths.
+
 ## Sampling, quality and schema evolution
 
 Text profiling reads a bounded prefix (64 KiB by default) and uses a

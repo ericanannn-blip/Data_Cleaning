@@ -1171,3 +1171,18 @@ dialog { max-width: 1050px; }
     font-size: 10px;
   }
 }
+.information-editor { padding: 24px; }
+.information-editor > label { display: block; font-weight: 600; }
+.information-editor textarea {
+  display: block; width: 100%; max-width: 100%; margin: 12px 0;
+  padding: 12px; border: 1px solid #cdd4cd; border-radius: 8px;
+  font: 13px/1.6 monospace; resize: vertical; background: #fafbf8; color: #243b32;
+}
+.information-controls { margin-top: 18px; flex-wrap: wrap; }
+.information-controls select { max-width: 100%; }
+.information-results { display: grid; gap: 16px; margin: 16px 0; }
+.information-run { padding: 20px; min-width: 0; }
+.information-run pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; }
+.information-run td { white-space: normal; overflow-wrap: anywhere; max-width: 320px; vertical-align: top; }
+.information-run summary { cursor: pointer; }
+.information-run h3 { overflow-wrap: anywhere; }

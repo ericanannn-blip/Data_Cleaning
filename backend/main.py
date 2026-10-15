@@ -13,11 +13,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from python_multipart.exceptions import MultipartParseError
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import Settings
 from .storage import Storage
 from .profiling import build_profile
 from .readers import ReaderError, image_png, pdf_page, zip_member
+from .information import InformationSchema
+from .information_store import InformationStore
 
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -25,6 +28,12 @@ STATIC = Path(__file__).resolve().parent / "static"
 
 class BodyTooLarge(Exception):
     pass
+
+
+class ExtractionBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    file_ids: list[str] = Field(min_length=1, max_length=20)
 
 
 class RequestLimitMiddleware:
@@ -87,6 +96,7 @@ class SecurityHeadersMiddleware:
 def create_app(settings: Settings | None = None):
     settings = settings or Settings.from_env()
     storage = Storage(settings)
+    information = InformationStore(storage)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -195,6 +205,44 @@ def create_app(settings: Settings | None = None):
     @app.get("/schemas")
     def schemas():
         return {"schemas": storage.schemas()}
+
+    @app.get("/information/schemas")
+    def information_schemas():
+        return {"schemas": information.schemas()}
+
+    @app.post("/information/schemas")
+    def save_information_schema(schema: InformationSchema):
+        return information.save_schema(schema)
+
+    @app.get("/information/runs")
+    def information_runs(file_id: str | None = Query(None, max_length=80),
+                         schema_id: str | None = Query(None, max_length=80),
+                         limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0)):
+        return information.runs(file_id, schema_id, limit, offset)
+
+    @app.post("/files/{file_id}/extract")
+    def extract_file(file_id: str, schema_id: str = Query(..., pattern=r"^[a-f0-9]{32}$")):
+        require_file(file_id)
+        if information.get_schema(schema_id) is None:
+            raise HTTPException(404, "Information schema not found.")
+        return information.extract(file_id, schema_id)
+
+    @app.post("/information/extract")
+    def extract_batch(batch: ExtractionBatch):
+        if information.get_schema(batch.schema_id) is None:
+            raise HTTPException(404, "Information schema not found.")
+        results = []
+        for file_id in dict.fromkeys(batch.file_ids):
+            try:
+                result = information.extract(file_id, batch.schema_id)
+                results.append({"file_id": file_id, "run": result,
+                                "error": None if result else "File record not found."})
+            except ReaderError as exc:
+                results.append({"file_id": file_id, "run": None, "error": str(exc)})
+            except OSError:
+                results.append({"file_id": file_id, "run": None, "error": "Stored source is unavailable. Restore the file before extraction."})
+        return {"results": results, "succeeded": sum(item["run"] is not None for item in results),
+                "failed": sum(item["run"] is None for item in results)}
 
     @app.get("/schemas/{key}")
     def schema_history(key: str):

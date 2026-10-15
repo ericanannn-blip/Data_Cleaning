@@ -271,6 +271,34 @@
         <div id="schema-error" class="notice error hidden" role="alert"></div>
         <div id="schema-library" class="schema-library"></div>
       </section>
+      <section class="schema-section information-section" aria-labelledby="information-title">
+        <div class="section-heading">
+          <div><div class="eyebrow">FIELDS / SOURCES / EVIDENCE</div>
+            <h2 id="information-title">Information schemas</h2></div>
+          <button id="refresh-information" class="button button-secondary" type="button">Refresh information</button>
+        </div>
+        <p class="schema-intro">Define the information you need across text, tables, JSON, PDF text layers and DOCX main bodies.
+          Match field labels or explicit JSON Pointer paths. Missing, invalid and conflicting values are marked for review.</p>
+        <div class="card information-editor">
+          <label for="information-template">Extraction fields (JSON template)</label>
+          <p class="sampling-note">Set a name, an entity and fields. Aliases match table headers, JSON keys or a whole label before “:”, “：” or “=”.
+            Paths select exact structured fields. Dates use YYYY-MM-DD. Saving changes creates an immutable definition.</p>
+          <textarea id="information-template" rows="16" spellcheck="false" aria-describedby="information-message"></textarea>
+          <button id="save-information" class="button button-primary" type="button">Save information schema</button>
+          <p id="information-message" class="sampling-note" role="status"></p>
+        </div>
+        <div class="resample-controls information-controls">
+          <label for="information-schema-select">Information schema</label>
+          <select id="information-schema-select"><option value="">Save a schema first</option></select>
+          <button id="edit-information" class="button button-secondary" type="button">Load definition</button>
+          <button id="extract-loaded" class="button button-primary" type="button" disabled>Extract loaded files</button>
+        </div>
+        <p id="information-progress" class="sampling-note" role="status"></p>
+        <p class="sampling-note">Batch extraction uses the files currently loaded in the file list, including the active search and filters.
+          Each run retains its template, source hash and evidence. No OCR or model inference is applied.</p>
+        <div id="information-results" class="information-results"></div>
+        <button id="more-information" class="text-button hidden" type="button">Load more extraction runs</button>
+      </section>
       <footer class="footer">
         <span
           >DAT Lab <span class="footer-separator">/</span> File ingestion &amp;

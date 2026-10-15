@@ -91,6 +91,21 @@ class Storage:
                     reviewed_at TEXT,
                     PRIMARY KEY (schema_key, version)
                 );
+                CREATE TABLE IF NOT EXISTS information_schemas (
+                    id TEXT PRIMARY KEY,
+                    definition_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS information_runs (
+                    id TEXT PRIMARY KEY,
+                    file_id TEXT NOT NULL REFERENCES files(id),
+                    schema_id TEXT NOT NULL REFERENCES information_schemas(id),
+                    result_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS information_source ON information_runs(file_id, schema_id);
+                CREATE INDEX IF NOT EXISTS information_schema_runs ON information_runs(schema_id, created_at DESC, id DESC);
+                CREATE INDEX IF NOT EXISTS information_created ON information_runs(created_at DESC, id DESC);
             """)
         # A killed process may leave an uncommitted write; committed raw files
         # are never touched. Initialization runs before the single worker starts.

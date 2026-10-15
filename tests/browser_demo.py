@@ -183,9 +183,44 @@ def main():
                     page.get_by_role("button", name="Inspect source", exact=True).click()
                     expect(page.locator("#detail-title")).to_have_text("quality.csv · v1")
                     page.get_by_role("button", name="Close file details").click()
+                    # Information schemas group requested fields independently
+                    # of the existing format-based schema families.
+                    definition = {"name": "Temperature information", "entity": "measurement", "fields": [
+                        {"name": "temperature", "type": "integer", "required": True}]}
+                    page.locator("#information-template").fill(json.dumps(definition))
+                    page.locator("#save-information").click()
+                    expect(page.locator("#information-message")).to_contain_text("Saved Temperature information")
+                    page.locator("#search").fill("measurements")
+                    expect(page.locator("#extract-loaded")).to_have_text("Extract 1 loaded files")
+                    page.locator("#extract-loaded").click()
+                    expect(page.locator("#information-progress")).to_contain_text("1 files extracted; 0 need attention")
+                    expect(page.locator("#information-results .information-run")).to_have_count(1)
+                    page.locator("#information-results summary").first.click()
+                    expect(page.locator("#information-results td").nth(1)).to_have_text("22")
+                    expect(page.locator("#information-results")).to_contain_text("field_pointer")
+                    with page.expect_download() as download:
+                        page.locator("#information-results").get_by_role("button", name="Download result & evidence").click()
+                    extraction = json.loads(Path(download.value.path()).read_text())
+                    assert extraction["records"][0]["values"]["temperature"] == 22
+                    assert extraction["records"][0]["fields"]["temperature"]["evidence"][0]["raw_value"] == 22
+                    page.locator("#search").fill("")
+                    expect(page.locator("#results-body tr")).to_have_count(8)
+                    page.locator("#extract-loaded").click()
+                    expect(page.locator("#information-progress")).to_contain_text("5 files extracted; 3 need attention")
+                    expect(page.locator("#information-results .information-run")).to_have_count(6)
+                    page.get_by_role("button", name="Details for measurements.dat", exact=True).click()
+                    page.get_by_role("tab", name="Information", exact=True).click()
+                    select = page.get_by_label("Information schema for this file")
+                    expect(select.locator("option")).to_have_count(2)
+                    select.select_option(index=1)
+                    page.locator("#detail-body").get_by_role("button", name="Extract information", exact=True).click()
+                    expect(page.locator("#detail-body")).to_contain_text("Extraction saved")
+                    expect(page.locator("#detail-body .information-run")).to_have_count(3)
+                    page.get_by_role("button", name="Close file details").click()
                     page.reload()
                     expect(page.locator("#results-body tr")).to_have_count(8)
                     expect(page.locator("#schema-library")).to_contain_text("REVIEWED SAMPLE")
+                    expect(page.locator("#information-results .information-run")).to_have_count(7)
                     if args.screenshots:
                         page.screenshot(path=str(args.screenshots / "desktop.png"), full_page=True)
                     page.route("**/files?*", lambda route: route.abort())
@@ -214,6 +249,7 @@ def main():
                     page.reload()
                     expect(page.locator("#results-body tr")).to_have_count(8)
                     expect(page.locator("#schema-library")).to_contain_text("REVIEWED SAMPLE")
+                    expect(page.locator("#information-results .information-run")).to_have_count(7)
                     assert raw_before == {path.name: path.read_bytes() for path in (data_dir / "raw").glob("*.dat")}
                     assert not errors, errors
                     browser.close()
@@ -223,6 +259,7 @@ def main():
                                   "raw_files": len(raw_before), "process_restart_persistence": "passed",
                                   "pdf_reader": "passed", "zip_member_preview": "passed", "category_filters": "passed",
                                   "quality_checks": "passed", "resample_history": "passed", "schema_review_export": "passed",
+                                  "information_batch_and_evidence": "passed", "information_export_and_history": "passed",
                                   "browser_errors": errors}))
             except BaseException:
                 log.flush()
