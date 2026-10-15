@@ -24,7 +24,8 @@ its seven tests are preserved; the web adapter reuses its detection functions.
 The CLI still supports extraction. The web workspace reads ZIP members in
 bounded memory buffers without extracting them. Images and PDF pages are
 re-encoded as PNG; HTML/XML and other text are displayed as text. There is no
-original-file download endpoint.
+direct raw-upload download endpoint. Validated recovered files can be opened
+or downloaded using the recovery workflow below.
 
 ## Workspace sections and readers
 
@@ -42,6 +43,110 @@ original-file download endpoint.
   and values. Plain text and XML/HTML have escaped text previews.
 - Other signature-recognized formats have metadata and hexadecimal previews.
   Unknown, empty and damaged files remain stored with review notes.
+
+## Information schemas and local document extraction
+
+The **Information schemas** workspace adds a separate information layer. Define
+an entity, named fields, types, aliases and optional JSON Pointer paths. The
+same immutable template applies across file formats without changing the
+existing format-based schema families. Text/PDF/DOCX readers match explicit
+`label: value`, `标签：值` or `label=value` lines; structured readers select table
+headers or JSON keys/paths. This is deterministic rule-based extraction, not
+free-text semantic interpretation.
+
+Each saved run retains its template, source SHA-256, original values, reader
+scope and evidence locations (PDF page/line, DOCX paragraph, text/NDJSON line,
+CSV row ending line, or JSON Pointer). Missing required fields, invalid types,
+conflicting candidates and partial reads require review. Original bytes stay
+unchanged. Template edits create a new content-addressed ID; prior templates
+and runs survive restarts. Results and the field contract can be exported as
+JSON. Null placeholders in incomplete extraction results are not valid values
+under the exported field contract; check field status before using results.
+
+Use **Information** in a file's detail dialog for one file, or **Extract loaded
+files** for the current loaded/search-filtered list. The UI sends batches of
+20; more saved files can be loaded before extraction. Runs are paginated and
+filterable by template. The example contact template is a demonstration,
+not a claim about the user's documents.
+
+To process a local folder without uploading originals or extracted values,
+run this on the computer where the directory exists, from the repository root:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m backend.extract_local --root "D:\documents\ai" --schema examples/information-schema.json --output "D:\documents\information-results.jsonl" --recursive
+```
+
+Edit [the template](examples/information-schema.json) to select the actual
+fields first. `--include "*.dat" --include "*.pdf"` restricts filenames;
+without `--include`, every regular file within the selected directory is a
+candidate. Symlinks and the template/output files are skipped. No server,
+network, database or original-file copy is involved. Source files are never
+modified, and existing output files are never overwritten. JSONL has one
+result or error per source file; processing continues after file-level errors
+and returns exit code 1 if any file failed. Extraction results can contain
+the selected document information; store the output accordingly.
+
+Readers support UTF text, JSON, NDJSON, CSV/TSV, PDF text layers and DOCX main
+body paragraphs (including paragraphs inside tables). Images/scans need OCR;
+generic archives and other binary formats require another reader. DOCX
+headers/footers, comments and attachments are excluded. Side-by-side DOCX
+table cells are not interpreted as label/value pairs. Text budgets are 1 MiB,
+2,000 structured records, 10,000 plain text lines, 20 PDF pages and 8,000
+characters per PDF page. Large JSON documents are rejected rather than parsed
+partially; split them or use NDJSON. Truncated final text/table lines are
+excluded. Structured aliases inspect at most 200 object fields to depth eight;
+explicit paths can select nested arrays. At most 20 candidates per field are
+retained; excess candidates produce a conflict. Stored upload hashes are
+verified before new extraction evidence is saved.
+
+Additional API endpoints:
+
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /information/schemas` | Validate and persist an immutable information template |
+| `GET /information/schemas` | List saved templates and exported field contracts |
+| `POST /files/{file_id}/extract?schema_id=...` | Append extraction evidence for one source |
+| `POST /information/extract` | Body: `schema_id` and up to 20 `file_ids`; partial failures retained |
+| `GET /information/runs?file_id=...&schema_id=...&limit=20&offset=0` | Paginated immutable extraction runs |
+
+These endpoints have the same shared-workspace visibility as uploads. The
+local directory processor is the appropriate entry point for content that
+should stay on the local computer; web routes never accept local paths.
+
+## Restore and view original-format files
+
+Open a file's **Read** tab and choose **Restore & view original**. The web
+workspace now supports the fixed single-byte XOR used by common image DAT
+files and up to three layers of GZIP, BZIP2, XZ or ZLIB compression. A gzip
+wrapper around an XOR image is also supported. Incomplete or concatenated
+streams, unrecognized bytes, damaged images/PDFs and excessive expansion are
+rejected without changing the uploaded source.
+
+The restored result opens directly in the detail view: images have zoom,
+PDFs have page navigation and extracted page text, and readable tables/text
+keep their existing readers. **Open original file** opens validated PDF and
+raster-image bytes in a new browser tab. **Download restored file** preserves
+those exact bytes with the detected extension (for example `.jpg` or `.pdf`),
+rather than downloading a screenshot or a PNG thumbnail. Other supported
+content is attachment-only, including HTML/text and ZIP containers.
+
+Recovery metadata and validated artifacts persist separately in SQLite and
+`<UPLOAD_DIR parent>/restored/<file_id>.bin`. Opening an existing file restores
+its saved view automatically. The input SHA-256 is verified before recovery;
+artifact hashes are checked before serving. Missing/corrupt artifacts can be
+regenerated from the retained source. Recovery output defaults to 20 MiB per
+file; raw uploads and recovered artifacts share the configured storage cap.
+
+Web Preview assets, API requests, upload requests and reader URLs resolve
+relative to the served page, so a preview mounted at `/preview/` loads the
+same application as `/`. Mobile file-list card styles are scoped to the file
+list; schema and information tables retain their headers and scroll within
+their own containers.
+
+```sh
+python tests/browser_demo.py --preview-prefix --screenshots test-results/preview
+```
 
 ## Sampling, quality and schema evolution
 
@@ -151,6 +256,12 @@ publication is a separate check.
 | `GET /files/{file_id}/profile?version=N` | Current or historical content profile; lazy first profile for legacy files |
 | `GET /files/{file_id}/history` | Profile versions and sampling evidence |
 | `POST /files/{file_id}/resample?sample_bytes=262144&sample_rows=500` | Append profile/schema revisions from original bytes |
+| `POST /files/{file_id}/restore` | Validate and persist an original-format recovery; return preview/download links |
+| `GET /files/{file_id}/restored` | Saved recovery metadata and content profile |
+| `GET /files/{file_id}/restored/content?download=true` | Exact restored bytes; omit download for inline PDF/images |
+| `GET /files/{file_id}/restored/image` | Re-encoded preview of a restored image |
+| `GET /files/{file_id}/restored/pages/{page}` | Restored PDF page text; append `/image` for the page image |
+| `GET /files/{file_id}/restored/archive/{entry}/profile` | Bounded restored archive member preview |
 | `GET /files/{file_id}/image` | Re-encoded image preview |
 | `GET /files/{file_id}/pages/{page}` | Bounded PDF text; one-based page numbers |
 | `GET /files/{file_id}/pages/{page}/image` | Rasterized PDF page |
@@ -185,9 +296,9 @@ NDJSON/XML/HTML and
 encoding estimates are `"heuristic"`. Empty or unidentified files use
 `status: "unsupported"`, remain persisted, and are shown for review. Headers
 identify a likely format, not file integrity or safety. ZIP-based office files
-are read as ZIP containers; compressed streams and XOR images are not decoded
-by the web adapter. The original CLI supports those
-additional transformations.
+are read as ZIP containers. Compressed streams and XOR images can be decoded
+explicitly through **Restore & view original**. The upload's initial profile
+continues to describe its original stored bytes.
 
 ## Storage and limits
 
@@ -206,7 +317,8 @@ raw orphans while preserving committed files.
 | `MAX_FILE_BYTES` | `10485760` (10 MiB) |
 | `MAX_REQUEST_BYTES` | `52428800` (50 MiB including multipart overhead) |
 | `MAX_FILES` | `20` per request |
-| `MAX_STORAGE_BYTES` | `524288000` (500 MiB of accepted raw files) |
+| `MAX_STORAGE_BYTES` | `524288000` (500 MiB of raw files plus recovered artifacts) |
+| `MAX_RESTORED_BYTES` | `20971520` (20 MiB per recovered file) |
 | `INSPECTION_BYTES` | `65536` (64 KiB prefix) |
 
 See [.env.example](.env.example). Export variables before startup; the app does
@@ -215,7 +327,8 @@ Databases, uploads, `.env` files, and browser output are excluded from Git.
 
 This is an unauthenticated, shared workspace. Use synthetic files: visitors can
 see metadata, content previews, sampled values and schema evidence. Original
-bytes have no public download route. The storage cap rejects uploads when full;
+bytes have no direct download route; validated recovery bytes are accessible
+through the same shared workspace. The storage cap rejects uploads when full;
 there is no public delete endpoint. Operators manage retention and backups.
 Back up the database consistently with SQLite's backup API and preserve the raw
 directory; do not copy just a live WAL database file.

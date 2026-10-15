@@ -1,0 +1,27 @@
+{
+  "name": "联系人信息（示例，请按文档修改）",
+  "entity": "person",
+  "fields": [
+    {
+      "name": "person_name",
+      "type": "string",
+      "aliases": ["姓名", "Name", "联系人"],
+      "paths": [],
+      "required": true
+    },
+    {
+      "name": "organization",
+      "type": "string",
+      "aliases": ["机构", "单位", "Organization"],
+      "paths": [],
+      "required": false
+    },
+    {
+      "name": "date",
+      "type": "date",
+      "aliases": ["日期", "Date"],
+      "paths": [],
+      "required": false
+    }
+  ]
+}

@@ -25,6 +25,11 @@ class Settings:
     max_storage_bytes: int = 500 * 1024 * 1024
     inspection_bytes: int = 64 * 1024
     sample_rows: int = 200
+    max_restored_bytes: int = 20 * 1024 * 1024
+
+    @property
+    def restored_dir(self):
+        return self.upload_dir.parent / "restored"
 
     @classmethod
     def from_env(cls):
@@ -37,4 +42,5 @@ class Settings:
             max_files=positive_int("MAX_FILES", 20),
             max_storage_bytes=positive_int("MAX_STORAGE_BYTES", 500 * 1024 * 1024),
             inspection_bytes=positive_int("INSPECTION_BYTES", 64 * 1024),
+            max_restored_bytes=positive_int("MAX_RESTORED_BYTES", 20 * 1024 * 1024),
         )
