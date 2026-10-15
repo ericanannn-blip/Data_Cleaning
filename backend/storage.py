@@ -50,6 +50,7 @@ class Storage:
     def initialize(self):
         self.settings.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.settings.upload_dir.mkdir(parents=True, exist_ok=True)
+        self.settings.restored_dir.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript("""
@@ -106,6 +107,11 @@ class Storage:
                 CREATE INDEX IF NOT EXISTS information_source ON information_runs(file_id, schema_id);
                 CREATE INDEX IF NOT EXISTS information_schema_runs ON information_runs(schema_id, created_at DESC, id DESC);
                 CREATE INDEX IF NOT EXISTS information_created ON information_runs(created_at DESC, id DESC);
+                CREATE TABLE IF NOT EXISTS restored_files (
+                    file_id TEXT PRIMARY KEY REFERENCES files(id),
+                    data_json TEXT NOT NULL,
+                    file_size INTEGER NOT NULL
+                );
             """)
         # A killed process may leave an uncommitted write; committed raw files
         # are never touched. Initialization runs before the single worker starts.
@@ -122,6 +128,21 @@ class Storage:
                 continue
             if identifier == raw.stem and identifier not in committed_ids:
                 raw.unlink()
+        with self.connect() as connection:
+            restored_ids = {row[0] for row in connection.execute("SELECT file_id FROM restored_files")}
+        for artifact in self.settings.restored_dir.iterdir():
+            try:
+                identifier = str(UUID(artifact.stem))
+            except ValueError:
+                continue
+            if identifier == artifact.stem and (artifact.suffix == ".part" or
+                                               artifact.suffix == ".bin" and identifier not in restored_ids):
+                artifact.unlink()
+
+    @staticmethod
+    def used_bytes(connection):
+        return connection.execute("SELECT (SELECT COALESCE(SUM(file_size), 0) FROM files) + "
+                                  "(SELECT COALESCE(SUM(file_size), 0) FROM restored_files)").fetchone()[0]
 
     def _enrich(self, connection, record):
         record = dict(record)
@@ -307,7 +328,7 @@ class Storage:
             digest = hashlib.sha256()
             try:
                 with self.connect() as connection:
-                    used = connection.execute("SELECT COALESCE(SUM(file_size), 0) FROM files").fetchone()[0]
+                    used = self.used_bytes(connection)
                 with temporary.open("xb") as output:
                     while chunk := upload.file.read(64 * 1024):
                         size += len(chunk)

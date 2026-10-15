@@ -1,6 +1,8 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+// Resolve beside the served page, including a Web Preview's path prefix.
+const resourceURL = (path) => new URL(path.replace(/^\/+/, ""), new URL("./", window.location.href)).href;
 const state = {
   queue: [],
   records: [],
@@ -54,17 +56,20 @@ function connection(online) {
 async function api(path, options = {}) {
   try {
     const {timeout = 15000, ...fetchOptions} = options;
-    const response = await fetch(path, {
+    const response = await fetch(resourceURL(path), {
       ...fetchOptions,
       signal: AbortSignal.timeout(timeout),
     });
     const body = await response.json();
-    if (!response.ok)
-      throw new Error(
+    if (!response.ok) {
+      const error = new Error(
         typeof body.detail === "string"
           ? body.detail
           : "The request could not be completed.",
       );
+      error.status = response.status;
+      throw error;
+    }
     connection(true);
     return body;
   } catch (error) {
@@ -164,7 +169,7 @@ function sendBatch(files) {
     const form = new FormData();
     files.forEach((file) => form.append("files", file, file.name));
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/files");
+    xhr.open("POST", resourceURL("files"));
     xhr.timeout = 120000;
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -473,13 +478,13 @@ function samplingNote(profile) {
 
 function readerView(file, profile, entry) {
   const view = element("div", "reader-view");
-  const base = `/files/${encodeURIComponent(file.id)}`;
+  const base = `/files/${encodeURIComponent(file.id)}${file.restored ? "/restored" : ""}`;
   const suffix = entry === undefined ? "" : `?entry=${entry}`;
   if (profile.reader === "image") {
     const controls = element("div", "reader-controls");
     const image = element("img", "preview-image");
     image.alt = file.original_name;
-    image.src = `${base}/image${suffix}`;
+    image.src = resourceURL(`${base}/image${suffix}`);
     controls.append(element("span", "", `${profile.metadata.width} × ${profile.metadata.height} · ${profile.metadata.mode}`),
       action("Toggle zoom", () => image.classList.toggle("zoomed")));
     image.addEventListener("error", () => view.append(element("p", "notice error", "Image preview is unavailable. Inspect the quality checks.")));
@@ -505,7 +510,7 @@ function readerView(file, profile, entry) {
       next.disabled = page >= profile.metadata.pages;
       label.textContent = `Page ${page} / ${profile.metadata.pages}`;
       image.alt = `${file.original_name}, page ${page}`;
-      image.src = `${base}/pages/${page}/image${suffix}`;
+      image.src = resourceURL(`${base}/pages/${page}/image${suffix}`);
       text.textContent = "Loading page text…";
       try {
         const data = await api(`${base}/pages/${page}${suffix}`);
@@ -601,11 +606,51 @@ async function showDetails(id, version) {
   }
 }
 
+function restorationView(file, profile) {
+  const view = element("div", "restoration-view");
+  const controls = element("div", "reader-controls recovery-controls");
+  const feedback = element("p", "sampling-note"); feedback.setAttribute("role", "status");
+  const links = element("div", "recovery-links");
+  const content = element("div"); content.append(readerView(file, profile));
+  const token = state.detailToken;
+  let recovering = false;
+  function show(result) {
+    if (token !== state.detailToken) return;
+    view.dataset.restored = "true";
+    feedback.textContent = `${result.filename} · ${formatBytes(result.file_size)} · ${result.transforms.length ? result.transforms.join(" → ") : "Original bytes; format verified"}`;
+    links.replaceChildren();
+    if (result.inline) {
+      const open = element("a", "button button-secondary", "Open original file");
+      open.href = resourceURL(result.content_url); open.target = "_blank"; open.rel = "noopener noreferrer";
+      links.append(open);
+    }
+    const download = element("a", "button button-secondary", "Download restored file");
+    download.href = resourceURL(result.download_url); download.download = result.filename;
+    links.append(download);
+    content.replaceChildren(readerView({...file, original_name: result.filename, restored: true}, result.profile));
+    restore.textContent = "Restore again";
+  }
+  const restore = action("Restore & view original", async () => {
+    recovering = true; restore.disabled = true; feedback.textContent = "Restoring and validating original-format content…";
+    try {
+      const result = await api(`/files/${encodeURIComponent(file.id)}/restore`, {method: "POST", timeout: 120000});
+      show(result);
+    } catch (error) {if (token === state.detailToken) feedback.textContent = error.message;}
+    finally {recovering = false; restore.disabled = false;}
+  });
+  controls.append(restore, links);
+  view.append(controls, feedback, content);
+  api(`/files/${encodeURIComponent(file.id)}/restored`).then((result) => {if (!recovering) show(result);}).catch((error) => {
+    if (token === state.detailToken && !recovering && error.status !== 404) feedback.textContent = error.message;
+  });
+  return view;
+}
+
 function renderFileDetail(file, profile, history) {
     $("detail-title").textContent = `${file.original_name} · v${profile.version}`;
     $("detail-body").replaceChildren();
-    const read = readerView(file, profile);
-    read.prepend(element("p", "sampling-note", `${profile.format.toUpperCase()} · ${samplingNote(profile)}`));
+    const read = restorationView(file, profile);
+    read.prepend(element("p", "sampling-note", `Uploaded sample: ${profile.format.toUpperCase()} · ${samplingNote(profile)}`));
     const schema = element("div");
     schema.append(element("h3", "", "Sampled fields"), element("p", "sampling-note", `Record grain: ${profile.grain} · ${samplingNote(profile)}`));
     if (profile.fields.length) schema.append(schemaFields(profile.fields, true));

@@ -7,6 +7,7 @@ second TestClient instance. It never writes demo uploads into the repository.
 """
 
 import argparse
+import gzip
 import json
 import os
 from pathlib import Path
@@ -26,18 +27,18 @@ from fixtures import image_bytes, pdf_bytes, zip_bytes
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def start_server(port, data_dir, log):
+def start_server(port, data_dir, log, preview_prefix=False):
     environment = {**os.environ, "PORT": str(port), "APP_DATA_DIR": str(data_dir),
                    "DATABASE_PATH": str(data_dir / "app.db"), "UPLOAD_DIR": str(data_dir / "raw")}
     environment["MAX_FILE_BYTES"] = "8192"
-    process = subprocess.Popen([sys.executable, "-m", "backend"], cwd=ROOT, env=environment, stdout=log, stderr=log)
+    process = subprocess.Popen([sys.executable, "-m", "tests.preview_server" if preview_prefix else "backend"], cwd=ROOT, env=environment, stdout=log, stderr=log)
     try:
         with httpx.Client(trust_env=False, timeout=1) as client:
             for _ in range(100):
                 if process.poll() is not None:
                     raise RuntimeError("Production server exited; inspect the server log.")
                 try:
-                    if client.get(f"http://127.0.0.1:{port}/health").status_code == 200:
+                    if client.get(f"http://127.0.0.1:{port}{'/preview' if preview_prefix else ''}/health").status_code == 200:
                         return process
                 except httpx.TransportError:
                     pass
@@ -60,6 +61,7 @@ def stop_server(process):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--screenshots", type=Path)
+    parser.add_argument("--preview-prefix", action="store_true")
     args = parser.parse_args()
     if args.screenshots:
         args.screenshots.mkdir(parents=True, exist_ok=True)
@@ -68,9 +70,9 @@ def main():
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
-        url = f"http://127.0.0.1:{port}"
+        url = f"http://127.0.0.1:{port}{'/preview/' if args.preview_prefix else '/'}"
         with (data_dir / "server.log").open("w+") as log:
-            process = start_server(port, data_dir, log)
+            process = start_server(port, data_dir, log, args.preview_prefix)
             try:
                 with sync_playwright() as playwright:
                     # Use a preinstalled Chromium when available; otherwise use
@@ -233,23 +235,91 @@ def main():
                     page.set_viewport_size({"width": 390, "height": 844})
                     expect(page.locator("#upload-button")).to_be_visible()
                     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "Mobile page overflows horizontally"
+                    information = page.locator("#information-results .information-run").first
+                    information.locator("summary").first.click()
+                    expect(information.locator("thead")).to_be_visible()
+                    assert information.locator("td").last.evaluate("node => getComputedStyle(node).display") == "table-cell"
+                    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "Expanded information table overflows"
+                    if args.screenshots:
+                        information.screenshot(path=str(args.screenshots / "mobile-information.png"))
+                    page.get_by_role("button", name="Details for quality.csv", exact=True).click()
+                    assert page.locator("#detail-body .sample-table td").last.evaluate("node => getComputedStyle(node).display") == "table-cell"
+                    expect(page.locator("#detail-body .sample-table thead").first).to_be_visible()
+                    page.get_by_role("button", name="Close file details").click()
                     page.get_by_role("button", name="Details for notes.dat").click()
                     page.get_by_role("tab", name="Properties", exact=True).click()
                     expect(page.locator("#detail-body")).to_contain_text("heuristic")
                     page.get_by_role("button", name="Close file details").click()
                     if args.screenshots:
                         page.screenshot(path=str(args.screenshots / "mobile.png"), full_page=True)
+                    page.set_viewport_size({"width": 1440, "height": 1100})
+                    original_jpeg = image_bytes("JPEG", size=(640, 480))
+                    encoded_jpeg = bytes(value ^ 0xA3 for value in original_jpeg)
+                    recovery_files = [
+                        {"name": "restored-photo.dat", "mimeType": "application/octet-stream", "buffer": encoded_jpeg},
+                        {"name": "compressed-paper.dat", "mimeType": "application/octet-stream", "buffer": gzip.compress(pdf_bytes())},
+                    ]
+                    page.locator("#file-input").set_input_files(recovery_files)
+                    page.locator("#upload-button").click()
+                    expect(page.locator("#page-message")).to_contain_text("2 files saved.")
+                    expect(page.locator("#results-body tr")).to_have_count(10)
+                    page.get_by_role("button", name="Details for restored-photo.dat", exact=True).click()
+                    page.get_by_role("button", name="Restore & view original", exact=True).click()
+                    expect(page.locator(".restoration-view")).to_have_attribute("data-restored", "true")
+                    expect(page.locator(".restoration-view")).to_contain_text("xor:0xa3")
+                    page.wait_for_function("() => document.querySelector('#detail-body .preview-image')?.naturalWidth === 640")
+                    with page.expect_download() as download:
+                        page.get_by_role("link", name="Download restored file", exact=True).click()
+                    assert Path(download.value.path()).read_bytes() == original_jpeg
+                    assert download.value.suggested_filename == "restored-photo.jpg"
+                    with page.expect_popup() as popup:
+                        page.get_by_role("link", name="Open original file", exact=True).click()
+                    popup.value.wait_for_load_state()
+                    assert popup.value.locator("img").evaluate("node => node.naturalWidth") == 640
+                    popup.value.close()
+                    if args.screenshots:
+                        page.screenshot(path=str(args.screenshots / "restored-image.png"))
+                    page.get_by_role("button", name="Close file details").click()
+                    page.get_by_role("button", name="Details for compressed-paper.dat", exact=True).click()
+                    page.get_by_role("button", name="Restore & view original", exact=True).click()
+                    expect(page.locator(".restoration-view")).to_contain_text("compressed-paper.pdf")
+                    page.wait_for_function("() => document.querySelector('#detail-body .pdf-page')?.naturalWidth > 0")
+                    page.get_by_role("button", name="Next page", exact=True).click()
+                    expect(page.locator(".pdf-text")).to_contain_text("Synthetic page two")
+                    with page.expect_download() as download:
+                        page.get_by_role("link", name="Download restored file", exact=True).click()
+                    assert Path(download.value.path()).read_bytes() == pdf_bytes()
+                    with page.expect_popup() as popup:
+                        page.get_by_role("link", name="Open original file", exact=True).click()
+                    popup.value.wait_for_load_state()
+                    assert popup.value.url.endswith("/restored/content")
+                    # Chromium's native PDF viewer uses a closed browser shadow
+                    # tree; its plugin is not a page-DOM <embed> element.
+                    native_response = page.request.get(popup.value.url)
+                    assert native_response.headers["content-type"] == "application/pdf"
+                    assert native_response.body() == pdf_bytes()
+                    if args.screenshots:
+                        popup.value.wait_for_timeout(500)
+                        popup.value.screenshot(path=str(args.screenshots / "original-pdf.png"))
+                    popup.value.close()
+                    if args.screenshots:
+                        page.screenshot(path=str(args.screenshots / "restored-pdf.png"))
+                    page.get_by_role("button", name="Close file details").click()
                     with sqlite3.connect(data_dir / "app.db") as db:
                         count = db.execute("SELECT COUNT(*) FROM files").fetchone()[0]
-                    assert count == 8
+                        assert db.execute("SELECT COUNT(*) FROM restored_files").fetchone()[0] == 2
+                    assert count == 10
                     raw_before = {path.name: path.read_bytes() for path in (data_dir / "raw").glob("*.dat")}
-                    assert len(raw_before) == 8
+                    assert len(raw_before) == 10
                     stop_server(process)
-                    process = start_server(port, data_dir, log)
+                    process = start_server(port, data_dir, log, args.preview_prefix)
                     page.reload()
-                    expect(page.locator("#results-body tr")).to_have_count(8)
+                    expect(page.locator("#results-body tr")).to_have_count(10)
                     expect(page.locator("#schema-library")).to_contain_text("REVIEWED SAMPLE")
                     expect(page.locator("#information-results .information-run")).to_have_count(7)
+                    page.get_by_role("button", name="Details for restored-photo.dat", exact=True).click()
+                    expect(page.locator(".restoration-view")).to_have_attribute("data-restored", "true")
+                    page.wait_for_function("() => document.querySelector('#detail-body .preview-image')?.naturalWidth === 640")
                     assert raw_before == {path.name: path.read_bytes() for path in (data_dir / "raw").glob("*.dat")}
                     assert not errors, errors
                     browser.close()
@@ -260,6 +330,8 @@ def main():
                                   "pdf_reader": "passed", "zip_member_preview": "passed", "category_filters": "passed",
                                   "quality_checks": "passed", "resample_history": "passed", "schema_review_export": "passed",
                                   "information_batch_and_evidence": "passed", "information_export_and_history": "passed",
+                                  "xor_image_and_compressed_pdf_restore": "passed", "original_download": "passed",
+                                  "mobile_table_rendering": "passed", "web_preview_prefix": args.preview_prefix,
                                   "browser_errors": errors}))
             except BaseException:
                 log.flush()

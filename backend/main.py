@@ -21,6 +21,7 @@ from .profiling import build_profile
 from .readers import ReaderError, image_png, pdf_page, zip_member
 from .information import InformationSchema
 from .information_store import InformationStore
+from .restoration import RestorationStore
 
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -97,6 +98,7 @@ def create_app(settings: Settings | None = None):
     settings = settings or Settings.from_env()
     storage = Storage(settings)
     information = InformationStore(storage)
+    restoration = RestorationStore(storage)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -157,13 +159,55 @@ def create_app(settings: Settings | None = None):
             raise HTTPException(404, "File record not found.")
         return record
 
-    def source(file_id, entry=None):
+    def source(file_id, entry=None, restored=False):
         require_file(file_id)
-        path = storage.raw_path(file_id)
+        path = restoration.path(file_id) if restored else storage.raw_path(file_id)
+        if path is None:
+            raise HTTPException(404, "Restore this file before opening it.")
         if entry is not None:
             _, data = zip_member(path, entry)
             return io.BytesIO(data)
         return path
+
+    @app.post("/files/{file_id}/restore")
+    def restore_file(file_id: str):
+        require_file(file_id)
+        return restoration.restore(file_id)
+
+    @app.get("/files/{file_id}/restored")
+    def restored_file(file_id: str):
+        require_file(file_id)
+        result = restoration.get(file_id)
+        if result is None:
+            raise HTTPException(404, "Restore this file before opening it.")
+        restoration.path(file_id)
+        return result
+
+    @app.get("/files/{file_id}/restored/content")
+    def restored_content(file_id: str, download: bool = False):
+        path = source(file_id, restored=True)
+        result = restoration.get(file_id)
+        return FileResponse(path, media_type=result["mime_type"], filename=result["filename"],
+                            content_disposition_type="attachment" if download or not result["inline"] else "inline",
+                            headers={"Content-Security-Policy": "default-src 'none'; object-src 'self'; frame-src 'self'"
+                                     if result["format"] == "pdf" and not download else "sandbox; default-src 'none'"})
+
+    @app.get("/files/{file_id}/restored/image")
+    def restored_image(file_id: str, entry: int | None = Query(None, ge=0)):
+        return Response(image_png(source(file_id, entry, restored=True)), media_type="image/png")
+
+    @app.get("/files/{file_id}/restored/pages/{page_number}")
+    def restored_pdf_text(file_id: str, page_number: int, entry: int | None = Query(None, ge=0)):
+        return pdf_page(source(file_id, entry, restored=True), page_number)
+
+    @app.get("/files/{file_id}/restored/pages/{page_number}/image")
+    def restored_pdf_image(file_id: str, page_number: int, entry: int | None = Query(None, ge=0)):
+        return Response(pdf_page(source(file_id, entry, restored=True), page_number, as_image=True), media_type="image/png")
+
+    @app.get("/files/{file_id}/restored/archive/{entry}/profile")
+    def restored_archive_member(file_id: str, entry: int):
+        name, data = zip_member(source(file_id, restored=True), entry)
+        return {"name": name, "profile": build_profile(io.BytesIO(data), name, len(data), hashlib.sha256(data).hexdigest())}
 
     @app.get("/files/{file_id}/profile")
     def file_profile(file_id: str, version: int | None = Query(None, ge=1)):
