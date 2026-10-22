@@ -2,329 +2,388 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta
-      name="description"
-      content="Inspect the underlying formats of DAT files and review persistent file metadata."
-    />
-    <title>DAT Lab · File inspector</title>
-    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css" />
-    <script src="/static/app.js" defer></script>
-  </head>
-  <body>
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="DAT Lab home"
-        ><span class="brand-mark">D<span>·</span></span
-        >DAT<span class="brand-light">Lab</span></a
-      >
-      <span class="workspace-label">FILE INSPECTION WORKSPACE</span>
-      <span id="connection" class="connection"
-        ><span class="connection-dot"></span
-        ><span id="connection-label">Connecting</span></span
-      >
-    </header>
-    <main>
-      <div class="heading-row">
-        <div>
-          <div class="eyebrow">
-            <span class="tiny-line"></span> INSPECT / CLASSIFY / REVIEW
-          </div>
-          <h1>文件与 Schema 工作台<span class="heading-dot">.</span></h1>
-          <p class="intro">
-            从保留原件，到查看结构与分类规则。<br class="desktop-break" />
-            切换工作区，上传进度保持继续。
-          </p>
-        </div>
-        <span class="demo-pill">SAVED FILES <span>v2.0</span></span>
-      </div>
-      <div
-        id="page-message"
-        class="notice hidden"
-        role="status"
-        aria-live="polite"
-      ></div>
-      <nav class="workspace-tabs" role="tablist" aria-label="选择 Schema 工作区">
-        <button id="tab-files" type="button" role="tab" aria-selected="true" aria-controls="workspace-files" tabindex="0" data-workspace="files"><span class="tab-number">01</span><span>文件与原件<small>来源、格式与下载</small></span></button>
-        <button id="tab-structure" type="button" role="tab" aria-selected="false" aria-controls="workspace-structure" tabindex="-1" data-workspace="structure"><span class="tab-number">02</span><span>结构 Schema<small>分组、字段与筛选标准</small></span></button>
-        <button id="tab-taxonomy" type="button" role="tab" aria-selected="false" aria-controls="workspace-taxonomy" tabindex="-1" data-workspace="taxonomy"><span class="tab-number">03</span><span>主题任务 Schema<small>词表、边界与真实状态</small></span></button>
-      </nav>
-      <details id="shared-intake" class="shared-intake" open>
-        <summary><span>导入文件</span><span id="compact-upload-status" role="status" aria-live="polite">上传面板在三个工作区共用</span></summary>
-      <section class="workspace-grid" aria-label="公共上传工作区">
-        <div class="card upload-card">
-          <div class="card-heading">
-            <h2><span class="step-number">01</span>批量上传</h2>
-            <span class="small-tag">ANY EXTENSION</span>
-          </div>
-          <div id="drop-zone" class="drop-zone">
-            <div class="upload-symbol" aria-hidden="true">
-              <svg viewBox="0 0 32 32" fill="none">
-                <path
-                  d="M16 22V8m-5 5 5-5 5 5M7 22v3h18v-3"
-                  stroke="currentColor"
-                  stroke-width="1.7"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </div>
-            <h3>拖入文件，或选择整个目录</h3>
-            <p>选择后检查队列，再开始上传。</p>
-            <label class="button button-secondary file-picker" for="file-input"
-              >选择文件 <span aria-hidden="true">→</span>
-              <input
-                id="file-input"
-                class="visually-hidden"
-                type="file"
-                multiple
-                aria-label="Choose files"
-              />
-            </label>
-            <label class="button button-secondary file-picker" for="directory-input">选择目录
-              <input id="directory-input" class="visually-hidden" type="file" multiple webkitdirectory aria-label="选择目录，仅加入 DAT 文件" />
-            </label>
-            <span id="upload-limits" class="upload-limits"
-              >Loading upload limits…</span
-            >
-          </div>
-          <div class="mapping-panel">
-            <label class="text-button file-picker" for="mapping-input">载入原名映射 JSON
-              <input id="mapping-input" class="visually-hidden" type="file" accept="application/json,.json" aria-label="载入原名映射 JSON" />
-            </label>
-            <p id="mapping-status">可选：conversation_asset_file_names.json。选目录时自动读取此映射，不上传它。</p>
-            <p>目录默认只加入 .dat；JSON、PDF、照片等其他格式可用“选择文件”单独添加。</p>
-          </div>
-          <div id="authentication" class="selection hidden">
-            <label for="api-token">Access token</label>
-            <input id="api-token" type="password" autocomplete="off" aria-label="Access token" />
-            <p>Enter your access token, then refresh records. The token stays in this page.</p>
-          </div>
-          <div id="selection" class="selection hidden">
-            <div class="selection-heading">
-              <span id="selection-count"></span
-              ><button id="clear-selection" class="text-button" type="button">
-                清空队列
-              </button>
-            </div>
-            <ul id="selected-files" class="selected-files"></ul>
-          </div>
-          <div
-            id="upload-progress"
-            class="upload-progress hidden"
-            role="status"
-            aria-live="polite"
-          >
-            <span id="progress-label">Uploading…</span
-            ><progress
-              id="progress-bar"
-              max="100"
-              value="0"
-              aria-label="Upload progress"
-            ></progress>
-            <ul id="active-uploads" class="active-uploads"></ul>
-          </div>
-          <div class="resume-actions"><button id="pause-upload" type="button" class="button button-secondary hidden">暂停上传</button><button id="forget-sessions" type="button" class="text-button">清除本机续传记录</button></div>
-          <div class="upload-footer">
-            <span id="upload-hint">Select files to start inspecting.</span
-            ><button
-              id="upload-button"
-              class="button button-primary"
-              type="button"
-              disabled
-            >
-              Upload &amp; inspect <span aria-hidden="true">→</span>
-            </button>
-          </div>
-        </div>
-        <aside class="card guide-card">
-          <div class="card-heading">
-            <h2>处理结果</h2>
-            <span class="small-tag">3 STEPS</span>
-          </div>
-          <ol class="pipeline">
-            <li>
-              <span class="pipeline-number">1</span>
-              <div>
-                <h3>分块接收并保留原件</h3>
-                <p>
-                  按文件保存来源名称、原名映射和 SHA-256。中断后可重选同一文件续传。
-                </p>
-              </div>
-            </li>
-            <li>
-              <span class="pipeline-number">2</span>
-              <div>
-                <h3>识别格式，生成文件 schema</h3>
-                <p>
-                  根据文件头及最多 64 KiB 样本判断格式。JSON/CSV 可推断结构；图片、PDF 和压缩包提供元数据 schema。
-                </p>
-              </div>
-            </li>
-            <li>
-              <span class="pipeline-number">3</span>
-              <div>
-                <h3>查看筛选依据与下载</h3>
-                <p>
-                  逐文件查看规则、证据和覆盖范围，下载 schema 及原始文件。语义主题标签仍需复核。
-                </p>
-              </div>
-            </li>
-          </ol>
-          <div class="privacy-note">
-            <span aria-hidden="true">ⓘ</span>
-            <p>
-              <strong>上传会把所选文件保存到此站点。</strong><br />沿用站点现有访问权限。原件可下载，上传不代表训练授权。格式识别不验证文件安全；不自动解压、OCR 或执行内容。
-            </p>
-          </div>
-        </aside>
-      </section>
-      </details>
-      <section id="batch-errors" class="batch-errors hidden" aria-live="polite">
-        <div class="error-heading">
-          <h2>需要处理的文件</h2>
-          <button id="dismiss-errors" class="text-button" type="button">
-            Dismiss
-          </button>
-        </div>
-        <ul id="error-list"></ul>
-      </section>
-      <section id="workspace-files" class="results-section workspace-panel" role="tabpanel" aria-labelledby="tab-files" tabindex="0">
-        <div class="section-heading">
-          <div>
-            <div class="eyebrow">YOUR INSPECTION LOG</div>
-            <h2 id="results-title">
-              文件记录 <span id="record-count" class="count-badge">0</span>
-            </h2>
-          </div>
-          <button
-            id="refresh-button"
-            class="button button-secondary"
-            type="button"
-          >
-            <span aria-hidden="true">↻</span> 刷新记录
-          </button>
-        </div>
-        <div class="metrics">
-          <div class="metric">
-            <span>Saved records</span><strong id="metric-total">—</strong
-            ><small>Across all uploads</small>
-          </div>
-          <div class="metric">
-            <span>Signature matches</span
-            ><strong id="metric-signatures">—</strong
-            ><small>Identified by file header</small>
-          </div>
-          <div class="metric">
-            <span>Needs review</span><strong id="metric-review">—</strong
-            ><small>Heuristic or unknown format</small>
-          </div>
-        </div>
-        <div class="card results-card">
-          <div class="results-toolbar">
-            <div class="search-wrap">
-              <span aria-hidden="true">⌕</span
-              ><input
-                id="search"
-                type="search"
-                placeholder="搜索已加载文件名…"
-                aria-label="Search loaded filenames"
-              />
-            </div>
-            <label class="filter-label"
-              >Format
-              <select
-                id="type-filter"
-                aria-label="Filter loaded records by format"
-              >
-                <option value="all">All formats</option>
-              </select></label
-            >
-          </div>
-          <div id="list-error" class="list-error hidden" role="alert"></div>
-          <div id="empty-state" class="empty-state">
-            <div class="empty-icon" aria-hidden="true">≡</div>
-            <h3 id="empty-title">Loading saved records…</h3>
-            <p id="empty-copy">Connecting to the inspection log.</p>
-          </div>
-          <div id="table-wrapper" class="table-wrapper hidden">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">File name</th>
-                  <th scope="col">Size</th>
-                  <th scope="col">Detected type</th>
-                  <th scope="col">Encoding</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Uploaded</th>
-                  <th scope="col">
-                    <span class="visually-hidden">Details</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody id="results-body"></tbody>
-            </table>
-          </div>
-          <div class="results-footer">
-            <span id="showing-count">Loading…</span
-            ><button id="load-more" class="text-button hidden" type="button">
-              Load more records ↓</button
-            ><span class="metadata-only">CONTENT SAMPLES</span>
-          </div>
-        </div>
-        <p class="classification-note">
-          <span aria-hidden="true">ⓘ</span> Signature matches identify a likely
-          format. Text detection is heuristic; unknown and empty files remain
-          available for review. Archives are identified without extraction.
-        </p>
-      </section>
-      <section id="workspace-structure" class="results-section workspace-panel" role="tabpanel" aria-labelledby="tab-structure" tabindex="0" hidden>
-        <div class="section-heading"><div><div class="eyebrow">OBSERVED STRUCTURE</div><h2>从文件结构浏览<span id="schema-group-count" class="count-badge">—</span></h2><p class="workspace-description">选择相同结构的一组文件，查看字段、必填项和每个文件的筛选证据。</p></div><button id="refresh-schemas" type="button" class="button button-secondary">刷新 Schema</button></div>
-        <div class="schema-workspace workspace-split">
-          <aside class="card schema-sidebar" aria-label="结构 Schema 分组">
-            <label class="workspace-search" for="schema-group-search">查找结构分组<input id="schema-group-search" type="search" placeholder="格式或指纹…" /></label>
-            <p id="schema-groups-status" class="workspace-status" role="status">选择此工作区后加载。</p>
-            <div id="schema-group-list" class="schema-group-list"></div>
-          </aside>
-          <div class="schema-main">
-            <section class="card schema-file-section" aria-labelledby="schema-files-heading"><div class="panel-heading"><h3 id="schema-files-heading">关联文件</h3><span id="schema-files-count" class="count-badge">—</span></div><p id="schema-files-status" class="workspace-status" role="status">选择左侧分组。</p><div id="schema-file-list" class="schema-file-list"></div><button id="schema-files-more" class="text-button hidden" type="button">继续加载关联文件</button></section>
-            <section id="schema-inspector" class="card schema-inspector" aria-live="polite"><p class="workspace-status">选择文件后，这里会显示实际生成的字段结构与依据。</p></section>
-          </div>
-        </div>
-      </section>
-      <section id="workspace-taxonomy" class="results-section workspace-panel" role="tabpanel" aria-labelledby="tab-taxonomy" tabindex="0" hidden>
-        <div class="section-heading"><div><div class="eyebrow">TOPICS / TASKS / EVIDENCE</div><h2>主题与任务分类规则<span id="taxonomy-version" class="count-badge">—</span></h2><p class="workspace-description">分类词表来自已有设计 Schema；文件结构识别不会自动产生主题标签。</p></div><button id="refresh-taxonomy" type="button" class="button button-secondary">刷新规则与状态</button></div>
-        <section class="card taxonomy-file-section" aria-labelledby="taxonomy-file-heading"><div class="panel-heading"><h3 id="taxonomy-file-heading">查看文件的实际分类状态</h3><span id="taxonomy-files-count" class="count-badge">—</span></div><div class="taxonomy-file-controls"><label for="taxonomy-file-select">已保存文件<select id="taxonomy-file-select"><option value="">加载后选择文件</option></select></label><button id="taxonomy-files-more" class="text-button hidden" type="button">加载更多文件</button></div><p id="taxonomy-files-status" class="workspace-status" role="status">选择此工作区后加载。</p><div id="taxonomy-file-status"></div></section>
-        <div class="card taxonomy-toolbar"><label class="workspace-search" for="taxonomy-search">查找分类规则<input id="taxonomy-search" type="search" placeholder="主题、任务代码或规则关键词…" /></label><label for="taxonomy-axis">规则范围<select id="taxonomy-axis"><option value="all">全部主题与任务</option><option value="topics">主题词表</option><option value="tasks">任务词表</option></select></label></div>
-        <p id="taxonomy-status" class="workspace-status" role="status">选择此工作区后加载。</p>
-        <div id="taxonomy-cards" class="taxonomy-cards"></div>
-      </section>
-      <footer class="footer">
-        <span
-          >DAT Lab <span class="footer-separator">/</span> File ingestion &amp;
-          classification</span
-        ><a href="/docs" target="_blank" rel="noopener">API reference →</a>
-      </footer>
-    </main>
-    <dialog id="detail-dialog" aria-labelledby="detail-title">
-      <div class="dialog-header">
-        <div>
-          <div class="eyebrow">FILE METADATA</div>
-          <h2 id="detail-title">File details</h2>
-        </div>
-        <button
-          id="close-dialog"
-          class="close-button"
-          type="button"
-          aria-label="Close file details"
-        >
-          ×
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="保留原件，查看文件结构与分类依据。" />
+<title>
+  DAT Lab · 文件工作台
+</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/static/styles.css" />
+<script src="/static/app.js" defer>
+</script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="DAT Lab 首页">
+      <span class="brand-mark" aria-hidden="true">
+        D
+      </span>
+      DAT Lab
+    </a>
+    <nav class="workspace-tabs" role="tablist" aria-label="工作区">
+      <button id="tab-files" type="button" role="tab" aria-selected="true" aria-controls="workspace-files" tabindex="0">
+        文件
+      </button>
+      <button id="tab-structure" type="button" role="tab" aria-selected="false" aria-controls="workspace-structure" tabindex="-1">
+        结构 Schema
+      </button>
+      <button id="tab-taxonomy" type="button" role="tab" aria-selected="false" aria-controls="workspace-taxonomy" tabindex="-1">
+        分类规则
+      </button>
+    </nav>
+    <div class="topbar-actions">
+      <span id="connection" class="connection">
+        <span class="connection-dot">
+        </span>
+        <span id="connection-label">
+          连接中
+        </span>
+      </span>
+      <button id="open-upload" class="button button-primary" type="button">
+        上传文件
+      </button>
+    </div>
+  </header>
+  <main>
+    <div id="page-message" class="notice hidden" role="status" aria-live="polite">
+    </div>
+    <div id="shared-intake" class="transfer-strip hidden" role="status" aria-live="polite">
+      <span id="compact-upload-status">
+        没有待上传文件
+      </span>
+      <div>
+        <button id="pause-upload-compact" class="text-button hidden" type="button">
+          暂停
+        </button>
+        <button id="open-upload-progress" class="text-button" type="button">
+          查看上传
         </button>
       </div>
-      <div id="detail-body"></div>
-      <div class="dialog-footer">
-        原件按上传字节保留；恢复名称与识别格式不等于解密或重建文件。
+    </div>
+    <section id="batch-errors" class="batch-errors hidden" aria-live="polite">
+      <div class="panel-heading">
+        <h2>
+          需要重试
+        </h2>
+        <button id="dismiss-errors" class="text-button" type="button">
+          收起
+        </button>
       </div>
-    </dialog>
-  </body>
+      <ul id="error-list">
+      </ul>
+    </section>
+    <section id="workspace-files" class="workspace-panel" role="tabpanel" aria-labelledby="tab-files" tabindex="0">
+      <div class="section-heading">
+        <h1>
+          文件
+          <span id="record-count" class="count-badge">
+            0
+          </span>
+        </h1>
+        <button id="refresh-button" class="button button-secondary" type="button">
+          刷新
+        </button>
+      </div>
+      <div class="results-toolbar">
+        <input id="search" type="search" placeholder="搜索文件名" aria-label="搜索全部文件名" />
+      <select id="type-filter" aria-label="文件格式">
+        <option value="all">
+          全部格式
+        </option>
+        <option value="pdf">
+          PDF
+        </option>
+        <option value="png">
+          PNG
+        </option>
+        <option value="jpeg">
+          JPEG
+        </option>
+        <option value="json">
+          JSON
+        </option>
+        <option value="csv">
+          CSV
+        </option>
+        <option value="tsv">
+          TSV
+        </option>
+        <option value="text">
+          文本
+        </option>
+        <option value="zip">
+          ZIP
+        </option>
+        <option value="unknown">
+          未知格式
+        </option>
+      </select>
+    </div>
+    <div id="list-error" class="notice hidden" role="alert">
+    </div>
+    <div class="data-surface">
+      <div id="empty-state" class="empty-state">
+        <h2 id="empty-title">
+          正在读取文件
+        </h2>
+        <p id="empty-copy">
+          文件保留在当前站点。
+        </p>
+      </div>
+      <div id="table-wrapper" class="table-wrapper hidden">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">
+                文件名
+              </th>
+              <th scope="col">
+                格式
+              </th>
+              <th scope="col">
+                大小
+              </th>
+              <th scope="col">
+                格式状态
+              </th>
+              <th scope="col">
+                <span class="visually-hidden">
+                  操作
+                </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="results-body">
+          </tbody>
+        </table>
+      </div>
+      <div class="results-footer">
+        <span id="showing-count">
+          加载中
+        </span>
+        <button id="load-more" class="text-button hidden" type="button">
+          加载更多
+        </button>
+      </div>
+    </div>
+  </section>
+  <section id="workspace-structure" class="workspace-panel" role="tabpanel" aria-labelledby="tab-structure" tabindex="0" hidden>
+    <div class="section-heading">
+      <h1>
+        结构 Schema
+        <span id="schema-group-count" class="count-badge">
+          —
+        </span>
+      </h1>
+      <button id="refresh-schemas" class="button button-secondary" type="button">
+        刷新
+      </button>
+    </div>
+    <div class="workspace-split">
+      <aside class="data-surface schema-sidebar" aria-label="结构分组">
+        <input id="schema-group-search" type="search" placeholder="查找格式或结构" aria-label="查找结构分组" />
+      <p id="schema-groups-status" class="workspace-status" role="status">
+        选择分组查看文件
+      </p>
+      <div id="schema-group-list" class="schema-group-list">
+      </div>
+    </aside>
+    <div class="schema-main">
+      <section class="data-surface schema-file-section" aria-labelledby="schema-files-heading">
+        <div class="panel-heading">
+          <h2 id="schema-files-heading">
+            关联文件
+          </h2>
+          <span id="schema-files-count" class="count-badge">
+            —
+          </span>
+        </div>
+        <p id="schema-files-status" class="workspace-status" role="status">
+          选择左侧分组
+        </p>
+        <div id="schema-file-list" class="schema-file-list">
+        </div>
+        <button id="schema-files-more" class="text-button hidden" type="button">
+          加载更多文件
+        </button>
+      </section>
+      <section id="schema-inspector" class="data-surface schema-inspector" aria-live="polite">
+        <p class="workspace-status">
+          选择文件，查看字段和依据。
+        </p>
+      </section>
+    </div>
+  </div>
+</section>
+<section id="workspace-taxonomy" class="workspace-panel" role="tabpanel" aria-labelledby="tab-taxonomy" tabindex="0" hidden>
+  <div class="section-heading">
+    <h1>
+      分类规则
+      <span id="taxonomy-version" class="count-badge">
+        —
+      </span>
+    </h1>
+    <button id="refresh-taxonomy" class="button button-secondary" type="button">
+      刷新
+    </button>
+  </div>
+  <p class="section-note">
+    主题分类尚未启用；规则供复核参考。
+  </p>
+  <div class="results-toolbar">
+    <input id="taxonomy-search" type="search" placeholder="搜索主题、任务或规则" aria-label="查找分类规则" />
+  <select id="taxonomy-axis" aria-label="规则范围">
+    <option value="all">
+      主题与任务
+    </option>
+    <option value="topics">
+      仅主题
+    </option>
+    <option value="tasks">
+      仅任务
+    </option>
+  </select>
+</div>
+<p id="taxonomy-status" class="workspace-status" role="status">
+  正在读取规则
+</p>
+<div class="taxonomy-layout">
+  <div id="taxonomy-cards" class="data-surface taxonomy-list" aria-label="分类规则列表">
+  </div>
+  <section id="taxonomy-rule-detail" class="data-surface rule-detail" aria-live="polite">
+    <p>
+      选择规则查看纳入和排除条件。
+    </p>
+  </section>
+</div>
+<details class="data-surface taxonomy-file-section">
+  <summary>
+    查看文件的分类状态
+    <span id="taxonomy-files-count" class="count-badge">
+      —
+    </span>
+  </summary>
+  <div class="taxonomy-file-controls">
+    <select id="taxonomy-file-select" aria-label="已保存文件">
+      <option value="">
+        暂无文件
+      </option>
+    </select>
+    <button id="taxonomy-files-more" class="text-button hidden" type="button">
+      加载更多
+    </button>
+  </div>
+  <p id="taxonomy-files-status" class="workspace-status" role="status">
+  </p>
+  <div id="taxonomy-file-status">
+  </div>
+</details>
+</section>
+</main>
+<dialog id="upload-dialog" class="upload-dialog" aria-labelledby="upload-title">
+  <div class="dialog-header">
+    <h2 id="upload-title">
+      上传文件
+    </h2>
+    <button id="close-upload" class="close-button" type="button" aria-label="关闭上传窗口">
+      ×
+    </button>
+  </div>
+  <div class="upload-content">
+    <div id="drop-zone" class="drop-zone">
+      <h3>
+        拖入文件
+      </h3>
+      <div class="picker-actions">
+        <label class="button button-secondary file-picker" for="file-input">
+          选择文件
+          <input id="file-input" class="visually-hidden" type="file" multiple aria-label="选择文件" />
+      </label>
+      <label class="button button-secondary file-picker" for="directory-input">
+        选择目录
+        <input id="directory-input" class="visually-hidden" type="file" multiple webkitdirectory aria-label="选择目录，仅加入 DAT 文件" />
+    </label>
+  </div>
+  <p id="upload-limits">
+    正在读取上传限制
+  </p>
+</div>
+<details class="mapping-panel">
+  <summary>
+    原名映射与续传
+  </summary>
+  <label class="text-button file-picker" for="mapping-input">
+    载入原名映射 JSON
+    <input id="mapping-input" class="visually-hidden" type="file" accept="application/json,.json" aria-label="载入原名映射 JSON" />
+</label>
+<p id="mapping-status">
+  选目录时自动读取映射；映射文件不会上传。
+</p>
+<p>
+  目录仅加入 DAT；其他格式请用“选择文件”。
+</p>
+<button id="forget-sessions" class="text-button" type="button">
+  清除本机续传记录
+</button>
+</details>
+<div id="authentication" class="selection hidden">
+  <label for="api-token">
+    访问令牌
+  </label>
+  <input id="api-token" type="password" autocomplete="off" aria-label="访问令牌" />
+<p>
+  令牌只保留在当前页面。
+</p>
+</div>
+<div id="selection" class="selection hidden">
+  <div class="panel-heading">
+    <span id="selection-count">
+    </span>
+    <button id="clear-selection" class="text-button" type="button">
+      清空队列
+    </button>
+  </div>
+  <ul id="selected-files" class="selected-files">
+  </ul>
+</div>
+<div id="upload-progress" class="upload-progress hidden" role="status" aria-live="polite">
+  <span id="progress-label">
+    上传中
+  </span>
+  <progress id="progress-bar" max="100" value="0" aria-label="上传进度">
+  </progress>
+  <ul id="active-uploads" class="active-uploads">
+  </ul>
+</div>
+<p class="section-note">
+  文件将保存到当前私有站点，原件保持不变。
+</p>
+</div>
+<div class="upload-footer">
+  <span id="upload-hint">
+    选择文件后开始上传
+  </span>
+  <div>
+    <button id="pause-upload" class="button button-secondary hidden" type="button">
+      暂停
+    </button>
+    <button id="upload-button" class="button button-primary" type="button" disabled>
+      上传 / 继续
+    </button>
+  </div>
+</div>
+</dialog>
+<dialog id="detail-dialog" class="detail-drawer" aria-labelledby="detail-title">
+  <div class="dialog-header">
+    <h2 id="detail-title">
+      文件详情
+    </h2>
+    <button id="close-dialog" class="close-button" type="button" aria-label="关闭文件详情">
+      ×
+    </button>
+  </div>
+  <div id="detail-body">
+  </div>
+</dialog>
+</body>
 </html>

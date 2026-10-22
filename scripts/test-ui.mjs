@@ -8,6 +8,7 @@ import { webcrypto } from 'node:crypto';
 class Element {
   constructor() {
     this.value = '';
+    this.open = false; this.isConnected = true;
     this.children = [];
     this.attributes = {};
     this.listeners = {};
@@ -19,6 +20,10 @@ class Element {
   addEventListener(name, handler) { (this.listeners[name] ||= []).push(handler); }
   setAttribute(name, value) { this.attributes[name] = value; }
   focus() { this.focused = true; }
+  showModal() { this.open = true; }
+  close() { this.open = false; for(const handler of this.listeners.close||[])handler({target:this}); }
+  get options() { return this.children; }
+
 }
 
 const elements = new Map();
@@ -34,19 +39,28 @@ const context = vm.createContext({
   },
   window: { addEventListener() {} },
   crypto: webcrypto,
-  Blob, File, AbortSignal, console, setTimeout,
+  Blob, File, AbortSignal, console, setTimeout, clearTimeout,
   localStorage: {
     getItem: key => localValues.get(key) || null,
     setItem: (key, value) => localValues.set(key, value),
     removeItem: key => localValues.delete(key),
   },
 });
+const markup = fs.readFileSync(new URL('../backend/static/index.html', import.meta.url), 'utf8');
+assert.doesNotMatch(markup, /<\/(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\s*>/i, 'Void HTML elements must not have closing tags.');
+const styles = fs.readFileSync(new URL('../backend/static/styles.css', import.meta.url), 'utf8');
+const drawerStyle = styles.match(/\.detail-drawer\s*\{([^}]+)\}/)?.[1];
+assert.ok(drawerStyle, 'File drawer sizing rule must exist.');
+assert.match(drawerStyle, /width:\s*min\(640px,\s*100%\)/);
+assert.match(drawerStyle, /max-width:\s*100%/);
+assert.doesNotMatch(drawerStyle, /100vw/, 'Drawer width must use the document containing block, excluding its scrollbar.');
 const source = fs.readFileSync(new URL('../backend/static/app.js', import.meta.url), 'utf8');
 assert.match(source, /initialize\(\);\s*$/);
 vm.runInContext(source.replace(/initialize\(\);\s*$/, ''), context);
 const run = code => vm.runInContext(code, context);
 // Match the native select defaults supplied by index.html.
 elements.get('taxonomy-axis').value = 'all';
+elements.get('type-filter').value = 'all';
 
 const bytes = new Uint8Array(20 * 1024 * 1024 + 10);
 bytes[0] = 3;
@@ -275,7 +289,7 @@ assert.equal(elements.get('workspace-files').hidden, true);
 assert.equal(elements.get('workspace-structure').hidden, false);
 assert.equal(elements.get('tab-structure').attributes['aria-selected'], 'true');
 assert.equal(elements.get('tab-files').tabIndex, -1);
-assert.equal(elements.get('shared-intake').open, false);
+assert.equal(elements.get('upload-dialog').open,false);
 assert.equal(run('state.busy'), true);
 assert.equal(run('state.queue'), currentQueue);
 assert.equal(run('state.progress'), currentProgress);
@@ -317,9 +331,14 @@ assert.equal(elements.get('workspace-structure').hidden, true);
 assert.equal(elements.get('workspace-taxonomy').hidden, false);
 const ruleCount = Object.keys(taxonomyData.topics).length + Object.keys(taxonomyData.tasks).length;
 assert.equal(elements.get('taxonomy-cards').children.length, ruleCount);
-assert.match(textOf(elements.get('taxonomy-cards')), /纳入标准/);
-assert.match(textOf(elements.get('taxonomy-cards')), /排除标准/);
-assert.match(textOf(elements.get('taxonomy-cards')), /边界说明/);
+assert.doesNotMatch(textOf(elements.get('taxonomy-cards')), /纳入标准/,'Rules list must stay concise.');
+assert.match(textOf(elements.get('taxonomy-rule-detail')), /纳入标准/);
+assert.match(textOf(elements.get('taxonomy-rule-detail')), /排除标准/);
+assert.match(textOf(elements.get('taxonomy-rule-detail')), /边界说明/);
+const firstRuleText=textOf(elements.get('taxonomy-rule-detail'));
+elements.get('taxonomy-cards').children[1].listeners.click[0]();
+assert.notEqual(textOf(elements.get('taxonomy-rule-detail')),firstRuleText,'Selecting a different rule must update its detail.');
+
 assert.match(textOf(elements.get('taxonomy-file-status')), /证据不足，尚未生成语义标签/);
 assert.match(textOf(elements.get('taxonomy-file-status')), /未生成/);
 assert.equal(run('state.busy'), true, 'Workspace loading must not stop an upload.');
@@ -362,4 +381,83 @@ assert.equal(elements.get('workspace-taxonomy').hidden, false);
 assert.equal(run('state.queue'), currentQueue);
 assert.equal(run('state.progress'), currentProgress);
 
-console.log('PASS: bounded chunks, ETag retry, safe names, duplicate files, 3901-file queue; three workspace panels; schema filtering/tree/criteria; actual taxonomy rules and honest pending state; preference; keyboard focus; stale response rejection; active upload preserved.');
+// The upload dialog is a persistent shell: close/reopen never loses File objects or progress.
+const uploadTrigger=new Element();context.uploadTrigger=uploadTrigger;
+run('openUploadDialog(uploadTrigger)');
+assert.equal(elements.get('upload-dialog').open,true);
+run('closeUploadDialog()');
+assert.equal(elements.get('upload-dialog').open,false);
+assert.equal(uploadTrigger.focused,true);
+assert.equal(run('state.queue'),currentQueue);
+assert.equal(run('state.progress'),currentProgress);
+run('openUploadDialog(uploadTrigger)');
+await run('switchWorkspace("files",{load:false})');
+assert.equal(elements.get('upload-dialog').open,true,'View changes must not destroy an open upload.');
+run('closeUploadDialog()');
+
+// Main file filtering and pagination are performed by the server, not the loaded subset.
+const recordCalls=[];
+context.recordsApi=async path=>{recordCalls.push(path);return {files:[schemaFile],total:201};};
+run('api=recordsApi;state.busy=false');
+elements.get('search').value='计算 & report';elements.get('type-filter').value='json';
+await run('loadRecords()');
+assert.equal(recordCalls[0],'/files?limit=100&offset=0&q=%E8%AE%A1%E7%AE%97%20%26%20report&type=json');
+assert.equal(run('state.total'),201);
+assert.match(elements.get('showing-count').textContent,/匹配文件/);
+await run('loadRecords(true)');
+assert.match(recordCalls[1],/offset=1/);
+assert.equal(elements.get('results-body').children[0].children.length,5,'File table should have only five essential columns.');
+
+let releaseOldRecords;
+context.recordsRace=path=>path.includes('q=old')?new Promise(resolve=>{releaseOldRecords=resolve;}):Promise.resolve({files:[{...schemaFile,id:'new',original_name:'new.json'}],total:1});
+run('api=recordsRace');elements.get('search').value='old';const oldRecords=run('loadRecords()');
+elements.get('search').value='new';await run('loadRecords()');releaseOldRecords({files:[schemaFile],total:1});await oldRecords;
+assert.equal(run('state.records[0].id'),'new','Old search results must not overwrite a newer query.');
+
+// Legacy Python ignores q/type: filter only the loaded records and retain unfiltered paging.
+const legacyCalls=[];
+const legacyRows=[{...schemaFile,id:'legacy-json',original_name:'report.json'}, {...schemaFile,id:'legacy-csv',original_name:'other.csv',detected_type:'csv'}];
+context.legacyApi=async path=>{legacyCalls.push(path);return {files:path.includes('offset=2')?[{...schemaFile,id:'legacy-later',original_name:'later.json'}]:legacyRows,total:201};};
+run('api=legacyApi;state.limits={max_file_bytes:1000000};state.records=[]');
+elements.get('search').value='';elements.get('type-filter').value='json';
+await run('loadRecords()');
+assert.equal(legacyCalls[0],'/files?limit=100&offset=0');
+assert.equal(run('state.records.length'),2);
+assert.equal(elements.get('results-body').children.length,1,'Python response may include CSV; it must not be shown as a JSON match.');
+assert.match(textOf(elements.get('results-body')),/report.json/);
+assert.doesNotMatch(textOf(elements.get('results-body')),/other.csv/);
+assert.match(elements.get('showing-count').textContent,/已加载 2 \/ 全部 201，当前筛选显示 1/);
+assert.equal(elements.get('search').attributes['aria-label'],'搜索已加载文件名');
+assert.equal(elements.get('search').placeholder,'搜索已加载文件名');
+const legacyLoaded=run('state.records');
+elements.get('search').value='missing';run('scheduleRecordSearch()');
+assert.equal(legacyCalls.length,1,'Legacy search should render immediately without resetting loaded pages.');
+assert.equal(run('state.records'),legacyLoaded);
+assert.equal(elements.get('results-body').children.length,0);
+assert.equal(elements.get('empty-title').textContent,'已加载文件中无匹配');
+elements.get('search').value='';elements.get('type-filter').value='all';run('applyRecordTypeFilter()');
+assert.equal(legacyCalls.length,1);
+assert.equal(elements.get('results-body').children.length,2);
+elements.get('type-filter').value='json';run('applyRecordTypeFilter()');
+await run('loadRecords(true)');
+assert.equal(legacyCalls[1],'/files?limit=100&offset=2','Legacy pagination offsets count every loaded row, not visible matches.');
+assert.equal(run('state.records.length'),3);
+assert.equal(elements.get('results-body').children.length,2);
+assert.match(elements.get('showing-count').textContent,/已加载 3 \/ 全部 201，当前筛选显示 2/);
+assert.equal(run('supportsServerFileFilters()'),false);
+run('state.limits={resumable_uploads:true}');run('renderRecords()');
+assert.equal(elements.get('search').attributes['aria-label'],'搜索全部文件名');
+assert.equal(elements.get('search').placeholder,'搜索文件名');
+
+// A loaded file opens the drawer and returns keyboard focus on close.
+context.detailTrigger=new Element();
+context.drawerApi=async path=>path.endsWith('/analysis')?{analysis:{...schemaResponse,classification:{status:'insufficient_evidence',topics:[],tasks:[]},schema:schemaResponse.schema}}:{...schemaFile,source_filename:'source.dat',extension:'json',mime_type:'application/json',created_at:'2026-10-22T00:00:00Z'};
+run('api=drawerApi');
+await run('showDetails("schema-file",detailTrigger)');
+assert.equal(elements.get('detail-dialog').open,true);
+assert.match(textOf(elements.get('detail-body')),/下载原件/);
+assert.match(textOf(elements.get('detail-body')),/尚未分类/);
+run('$("detail-dialog").close()');
+assert.equal(context.detailTrigger.focused,true);
+
+console.log('PASS: compact file table, persistent upload dialog, drawer focus, server search/pagination, selected rule details; bounded chunks, ETag retry, safe names, duplicate files, 3901-file queue; three workspace panels; schema filtering/tree/criteria; actual taxonomy rules and honest pending state; preference; keyboard focus; stale response rejection; active upload preserved.');
