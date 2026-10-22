@@ -1,0 +1,11 @@
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn==0.52.1
+python-multipart==0.0.32
+pypdf==6.10.0
+pypdfium2==5.9.0
+Pillow==12.3.0
+openpyxl==3.1.5
+defusedxml==0.7.1
+ijson==3.5.0
+striprtf==0.0.32

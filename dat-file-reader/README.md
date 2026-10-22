@@ -5,7 +5,7 @@
 在 VS Code 的 Windows 终端运行：
 
 ```powershell
-py .\dat_reader.py "D:\文件分类\06_敏感资料\ai" "D:\其他目录\一个文件.dat" -o "D:\dat_结果"
+py .\dat_reader.py "D:\path\to\export" "D:\其他目录\一个文件.dat" -o "D:\dat_结果"
 ```
 
 同一路径重复出现在多个输入中时，仅处理一次。单个文件可以不是 `.dat`；目录扫描只选 `.dat`。`--max-bytes 67108864` 可调整单个文件的内存解码及解压上限（默认 64 MiB）。超过上限的已识别图片、PDF、音视频等二进制文件仍按流复制；需要读取内容的超限文件记为 `skipped`。

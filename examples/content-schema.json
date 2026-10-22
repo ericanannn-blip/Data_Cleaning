@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.0",
+  "schema_fingerprint": "8329d9700ddac32344f851d34ccbb36da26b3b308d6c1421a78895ece1441f2e",
+  "candidates": [
+    {
+      "name": "faithful",
+      "purpose": "Preserve source columns and observed native types",
+      "json_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": true,
+        "required": [],
+        "x-inference": "sampled hypothesis; not an enforced data contract",
+        "properties": {
+          "recorded_at": {
+            "type": "string",
+            "x-observed-types": {
+              "string": 2
+            }
+          },
+          "sensor id": {
+            "type": "string",
+            "x-observed-types": {
+              "string": 2
+            }
+          },
+          "temperature": {
+            "type": "string",
+            "x-observed-types": {
+              "string": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "analytics",
+      "purpose": "Propose tidy columns, typed measures, missing-value and date handling",
+      "json_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": true,
+        "required": [],
+        "x-inference": "sampled hypothesis; not an enforced data contract",
+        "properties": {
+          "recorded_at": {
+            "type": "string",
+            "x-source-column": "recorded_at",
+            "x-transform": "proposed; originals and sample values are unchanged",
+            "format": "date-time"
+          },
+          "sensor_id": {
+            "type": "string",
+            "x-source-column": "sensor id",
+            "x-transform": "proposed; originals and sample values are unchanged"
+          },
+          "temperature": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "x-source-column": "temperature",
+            "x-transform": "proposed; originals and sample values are unchanged"
+          }
+        }
+      }
+    },
+    {
+      "name": "semantic",
+      "purpose": "Describe the unit of observation and analytical field roles",
+      "json_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": true,
+        "required": [],
+        "x-inference": "sampled hypothesis; not an enforced data contract",
+        "properties": {
+          "recorded_at": {
+            "type": "string",
+            "x-observed-types": {
+              "string": 2
+            }
+          },
+          "sensor id": {
+            "type": "string",
+            "x-observed-types": {
+              "string": 2
+            }
+          },
+          "temperature": {
+            "type": "string",
+            "x-observed-types": {
+              "string": 2
+            }
+          }
+        },
+        "x-content-family": "tabular",
+        "x-field-roles": {
+          "recorded_at": {
+            "role": "time",
+            "candidate_key_in_sample": false
+          },
+          "sensor id": {
+            "role": "identifier",
+            "candidate_key_in_sample": true
+          },
+          "temperature": {
+            "role": "measure",
+            "candidate_key_in_sample": false
+          }
+        }
+      }
+    }
+  ],
+  "sampling": {
+    "method": "generated example",
+    "records_sampled": 2,
+    "full_file_validation": false
+  },
+  "profiles": {
+    "recorded_at": {
+      "observed_types": {
+        "string": 2
+      },
+      "sample_null_count": 0,
+      "sample_null_rate": 0.0,
+      "sample_distinct_non_null": 2,
+      "proposed_name": "recorded_at"
+    },
+    "sensor id": {
+      "observed_types": {
+        "string": 2
+      },
+      "sample_null_count": 0,
+      "sample_null_rate": 0.0,
+      "sample_distinct_non_null": 2,
+      "proposed_name": "sensor_id"
+    },
+    "temperature": {
+      "observed_types": {
+        "string": 2
+      },
+      "sample_null_count": 1,
+      "sample_null_rate": 0.5,
+      "sample_distinct_non_null": 1,
+      "proposed_name": "temperature"
+    }
+  },
+  "quality": {
+    "sample_duplicate_rows": 0,
+    "warnings": [
+      "Illustrative synthetic records; not the user attachment"
+    ],
+    "scope": "sample only; no claims about unsampled rows, completeness, or full-file integrity"
+  }
+}

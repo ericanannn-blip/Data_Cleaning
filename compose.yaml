@@ -1,0 +1,33 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        WITH_MEDIA: ${WITH_MEDIA:-0}
+        WITH_SCIENCE: ${WITH_SCIENCE:-0}
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      APP_ENV: production
+      APP_DATA_DIR: /data
+      API_TOKEN: ${API_TOKEN:?Set an access token of at least 32 characters}
+      MAX_FILE_BYTES: ${MAX_FILE_BYTES:-0}
+      MAX_REQUEST_BYTES: ${MAX_REQUEST_BYTES:-0}
+      MAX_STORAGE_BYTES: ${MAX_STORAGE_BYTES:-0}
+      INSPECTION_BYTES: ${INSPECTION_BYTES:-65536}
+      SAMPLE_ROWS: ${SAMPLE_ROWS:-200}
+      SAMPLE_PAGES: ${SAMPLE_PAGES:-3}
+      OCR_LANGUAGES: ${OCR_LANGUAGES:-eng+chi_sim+chi_tra}
+      PARSER_MEMORY_MB: ${PARSER_MEMORY_MB:-512}
+      PARSER_TIMEOUT: ${PARSER_TIMEOUT:-60}
+      WORKER_ENABLED: ${WORKER_ENABLED:-1}
+      ARCHIVE_BYTES: ${ARCHIVE_BYTES:-1073741824}
+      TIKA_URL: ${TIKA_URL:-}
+    volumes:
+      - data:/data
+    restart: unless-stopped
+    stop_grace_period: 15s
+    mem_limit: ${APP_MEMORY_LIMIT:-1g}
+    pids_limit: 64
+volumes:
+  data:

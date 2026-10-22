@@ -1,0 +1,5 @@
+-r requirements.txt
+# Optional readers, loaded only inside the matching file's parser process.
+numpy==2.4.6
+pyarrow==23.0.1
+h5py==3.15.1

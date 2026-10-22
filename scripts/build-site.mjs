@@ -1,0 +1,10 @@
+import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { build } from 'esbuild';
+const root=new URL('../',import.meta.url);
+let source=await fs.readFile(new URL('../site/worker.template.js',import.meta.url),'utf8');
+for(const [token,path] of [['__INDEX_HTML__','backend/static/index.html'],['__APP_JS__','backend/static/app.js'],['__STYLES_CSS__','backend/static/styles.css'],['__FAVICON_SVG__','backend/static/favicon.svg']]) source=source.replace(token,JSON.stringify(await fs.readFile(new URL('../'+path,import.meta.url),'utf8')));
+await fs.mkdir(new URL('../.build/',import.meta.url),{recursive:true}); await fs.writeFile(new URL('../.build/worker.js',import.meta.url),source);
+await fs.mkdir(new URL('../dist/server/',import.meta.url),{recursive:true});
+await build({stdin:{contents:source,resolveDir:fileURLToPath(new URL('../site/',import.meta.url)),sourcefile:'worker.js'},bundle:true,format:'esm',platform:'browser',target:'es2022',outfile:fileURLToPath(new URL('../dist/server/index.js',import.meta.url))});
+console.log('Built Worker bundle at dist/server/index.js');

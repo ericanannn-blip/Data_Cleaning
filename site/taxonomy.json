@@ -1,0 +1,174 @@
+{
+  "reference": {
+    "version": "1.1.0",
+    "scope": "Vocabulary reference only; file evidence is separate from chat user-only records",
+    "sha256": "5dabb63be060183d30a631e2b614c78cc1926d2fddd72e406a5df51922014068",
+    "schema_id": "urn:local:content-cleaning:record:1.1.0"
+  },
+  "topics": {
+    "CRYPTO_BLOCKCHAIN": {
+      "label_zh": "加密资产与区块链",
+      "exclude": "解释普通银行存款利息",
+      "boundary": "保留稳定代码；不因同时涉及钱就自动增加商业经济。",
+      "include": "区块链、加密资产、链上数据、交易机制与转账设施。"
+    },
+    "HEALTH_WELLBEING": {
+      "label_zh": "健康与生活习惯",
+      "exclude": "讨论社会心理学从众实验",
+      "boundary": "心理学/社会行为概念不自动归本类；健康讲堂、服药提醒产品材料、题干和药物问题不证明用户患病或本人经历。",
+      "include": "营养、睡眠、健康习惯、健康及药物知识。"
+    },
+    "TECHNOLOGY_AI_ENGINEERING": {
+      "label_zh": "技术、AI 与工程",
+      "exclude": "统计给定段落的人名次数",
+      "boundary": "数学题借助代码求值不自动加本主题；文本提取/基础计数不自动视为编程。",
+      "include": "软件、AI、计算机配置、硬件、机器人和工程实现。"
+    },
+    "HUMANITIES_SOCIAL_SCIENCE": {
+      "label_zh": "人文与社会",
+      "exclude": "询问改善睡眠习惯",
+      "boundary": "心理学/社会行为讨论不自动归健康；题干、转贴及角色要求不证明本人经历或立场。",
+      "include": "历史、地理比较、政治、军事与国际事务、社会、文化、心理学与社会行为。"
+    },
+    "COLLEGE_APPLICATION": {
+      "label_zh": "升学与大学申请",
+      "exclude": "写学生会部长申请",
+      "boundary": "社团职务申请归组织活动；写作任务不自动证明升学主题。",
+      "include": "大学申请、招生要求、申请文书和升学选择。"
+    },
+    "STEM": {
+      "label_zh": "数理与自然科学",
+      "exclude": "设计一节数学课的课堂流程",
+      "boundary": "讲题本身不等于教学设计；偶尔用代码计算不自动增加技术主题。",
+      "include": "数学、物理、化学、生物等学科内容。"
+    },
+    "ORGANIZATION_ACTIVITIES": {
+      "label_zh": "组织、社团与活动",
+      "exclude": "改写一段文学分析",
+      "boundary": "明确组织/活动目的才归此类；不能单凭正式文体推断。",
+      "include": "学生会、社团、会议公告、活动安排、问卷及职务申请。"
+    },
+    "LANGUAGE_LITERATURE": {
+      "label_zh": "语言与文学",
+      "exclude": "用中文解释通货膨胀",
+      "boundary": "翻译其他学科材料保留原学科主题；中文/英文输出要求不是语言主题；托福写作不自动归大学申请。",
+      "include": "语言学习、语法、词汇、文学、APA/citation、口语稿、表达及写作技巧。"
+    },
+    "BUSINESS_ECONOMICS": {
+      "label_zh": "商业与经济金融",
+      "exclude": "分析以太坊链上交易",
+      "boundary": "明确链/代币语境优先加密类；金融相关不自动双标。",
+      "include": "经济、会计、市场、股票、传统金融及商业计划。"
+    },
+    "EDUCATION_TEACHING": {
+      "label_zh": "教学与课程设计",
+      "exclude": "求解一道三角函数题",
+      "boundary": "解题/讲题不自动归本类；扮演教师不证明用户职业。",
+      "include": "教案、教学方法、课堂流程、课程及教学评价。"
+    },
+    "OTHER": {
+      "label_zh": "其他已知主题",
+      "exclude": "仅说请解答图片中的题",
+      "boundary": "必须说明类目缺口；不能代替证据不足。新增代码需至少3个真实对话支持并获主代理批准。",
+      "include": "用户文本明确可理解，但当前主题词表没有覆盖的内容。"
+    },
+    "ARTS_MEDIA_ENTERTAINMENT": {
+      "label_zh": "艺术、媒体与娱乐",
+      "exclude": "制作物理实验poster",
+      "boundary": "图片编辑是任务；日常发型修改和科学poster不因此自动归艺术。",
+      "include": "影视、游戏、音乐、美术、视觉创作和娱乐讨论。"
+    }
+  },
+  "tasks": {
+    "CONVERSATION_PRACTICE": {
+      "label_zh": "对话与口语练习",
+      "exclude": "仅请求翻译一句话不是对话练习。",
+      "boundary": "角色与题干不证明用户职业、身份或生活经历。",
+      "include": "对话练习、口语练习或互动角色练习。"
+    },
+    "CREATE_EDIT_MEDIA": {
+      "label_zh": "图像、图表或媒体创作",
+      "exclude": "仅讨论已有作品不是媒体创作。",
+      "boundary": "媒体任务不自动成为艺术主题。",
+      "include": "创作/修改图片、图表、音视频等媒体。"
+    },
+    "FORMAT_CONVERT": {
+      "label_zh": "格式整理与转换",
+      "exclude": "改动内容表达主要为写作改写。",
+      "boundary": "保持内容语义的转换与内容写作分开。",
+      "include": "整理格式、排版、转换文件或表示形式。"
+    },
+    "DESIGN_TEACHING": {
+      "label_zh": "设计教学",
+      "exclude": "学生要求讲题/解题不是教学设计。",
+      "boundary": "必须明确教学设计目标，不能由角色扮演自动推断。",
+      "include": "设计教案、教学流程、课程或教学评价。"
+    },
+    "CODE_BUILD": {
+      "label_zh": "编程与搭建",
+      "exclude": "普通文本提取、基础计数不自动编程。",
+      "boundary": "有明确代码/系统交付物；技术主题仍需内容依据。",
+      "include": "实现、搭建或修改程序及技术系统。"
+    },
+    "APPLICATION_SUPPORT": {
+      "label_zh": "申请准备",
+      "exclude": "一般公告写作不是申请。",
+      "boundary": "大学与组织职务申请共享任务、分别确定主题。",
+      "include": "准备申请材料、申请选择与要求核查。"
+    },
+    "DEBUG_CONFIGURE": {
+      "label_zh": "排错与配置",
+      "exclude": "泛泛解释软件概念用解释学习。",
+      "boundary": "需存在错误、配置目标或排查意图。",
+      "include": "诊断故障、修复错误或调整配置。"
+    },
+    "EXPLAIN_LEARN": {
+      "label_zh": "解释与学习",
+      "exclude": "独立求出题目答案优先解题。",
+      "boundary": "解释/讲题任务不自动成为教育主题。",
+      "include": "解释概念、过程或原因，协助理解。"
+    },
+    "PLAN_ORGANIZE": {
+      "label_zh": "计划与安排",
+      "exclude": "单纯解释现有流程不等于计划。",
+      "boundary": "教学流程可同时有教学设计，不能据此推断职业。",
+      "include": "规划步骤、日程、活动或工作安排。"
+    },
+    "TRANSLATE": {
+      "label_zh": "翻译",
+      "exclude": "单纯指定回答语言不等于翻译。",
+      "boundary": "任务与学科分开；翻译经济内容仍是经济主题。",
+      "include": "将已知内容转换到另一语言。"
+    },
+    "SUMMARIZE_EXTRACT": {
+      "label_zh": "总结与提取",
+      "exclude": "开发通用计数程序/流水线才是编程。",
+      "boundary": "提取原文及数词频不自动CODE_BUILD。",
+      "include": "总结、提取、汇总信息和文本基础计数。"
+    },
+    "SOLVE_EXERCISE": {
+      "label_zh": "解题与练习",
+      "exclude": "独立查找资料或比较信息源用研究比较。",
+      "boundary": "附件依赖但用户明确求解，可保留任务、topics=[]。",
+      "include": "求解题目、练习、计算或从例题求比较。"
+    },
+    "RESEARCH_COMPARE": {
+      "label_zh": "查找、研究与比较",
+      "exclude": "从给定例题求比较不自动属于本类。",
+      "boundary": "以资料获取/独立比较为目的；题内比较按解题。",
+      "include": "查找、研究、核查资料或独立资料比较。"
+    },
+    "WRITE_REWRITE": {
+      "label_zh": "写作与改写",
+      "exclude": "纯格式转换和抽取不自动归写作。",
+      "boundary": "申请文、公告、论文等主题取决于实际内容。",
+      "include": "撰写、修改、润色或重写文字。"
+    },
+    "OTHER": {
+      "label_zh": "其他明确任务",
+      "exclude": "不知道用户要做什么时不能强填其他。",
+      "boundary": "说明具体任务缺口；新增代码需至少3个真实对话支持并获主代理批准。",
+      "include": "文本明确，但现有任务词表未覆盖的操作。"
+    }
+  }
+}
